@@ -1,0 +1,27 @@
+---
+- hosts: all
+  gather_facts: no
+
+  tasks:
+  - name: install docker
+    raw: amazon-linux-extras install -y docker
+
+  - name: usermod
+    user:
+      name: ec2-user
+      group: docker
+
+  - name: start docker
+    service:
+      name: docker
+      state: started
+
+  - name: install pip & setuptools
+    dnf:
+      name: python-pip
+
+  - name: pip install docker & tools
+    pip:
+      name:
+      - docker
+      - docker-pretty-ps

@@ -20,12 +20,13 @@
     "turs_sale": 0
   },
 ```
+- Получить api_id и api_hash для приложения на https://my.telegram.org
+- С помощью фреймворка Telethon произвести аутентификацию на сервере Telegram, сохранить string session. См.: https://telethon.readthedocs.io/en/latest/concepts/sessions.html#string-sessions
 - Заполнить документ `settings`:
     - keywords — ключевые слова (могут быть регулярными выражениями)
     - sleeptimer — период опроса каналов в секундах
     - output_channel — имя целевого канала, куда будут пересылаться сообщения
-    - api_id, api_hash —  см.: https://my.telegram.org
-    - session — строка сеанса, полученная после аутентификации через фреймворк Telethon. См.: https://telethon.readthedocs.io/en/latest/concepts/sessions.html#string-sessions
+    - api_id, api_hash, session —  значения, полученные на предыдущих шагах
 
 Пример:
 ```

@@ -2,7 +2,7 @@
 Приложение отслеживает новые сообщения в каналах Telegram и пересылает те, которые подпадают под ключевые слова. Пример работы: https://t.me/travelekb
 
 # Реализация
-Написано на Python 3.7 с использованием фреймворка Telethon. Хранение данных в БД Cloudant (облачный сервис IBM Cloud). Для развертывания прилагается Dockerfile и плейбук Ansible.
+Приложение написано на Python 3.7 с использованием фреймворка Telethon. Хранение данных в БД Cloudant (облачный сервис IBM Cloud). Для развертывания прилагается Dockerfile и плейбук Ansible.
 
 # Развертывание
 - Создать в IBM Cloud ресурс Cloudant. Создать Service credentials, открыть View credentials, сохранить как `app/src/creds.json`

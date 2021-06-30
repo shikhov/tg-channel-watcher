@@ -52,16 +52,17 @@ while True:
     for channel in channels:
         saved_msg_id = channels[channel]
         last_msg_id = tg.get_messages(channel, limit=1)[0].id
-        if saved_msg_id != 0:
-            if last_msg_id > saved_msg_id:
-                new_msg_count = last_msg_id - saved_msg_id
-                for msg in reversed(tg.get_messages(channel, limit=new_msg_count)):
-                    if msg.message and msg.id > saved_msg_id:
-                        for keyword in keywords:
-                            if re.search(keyword, msg.message.lower()):
-                                tg(ForwardMessagesRequest(from_peer=peers[channel], id=[msg.id], to_peer=output_peer))
-                                break
         channels[channel] = last_msg_id
+        if saved_msg_id == 0: continue
+        if last_msg_id <= saved_msg_id: continue
+        new_msg_count = last_msg_id - saved_msg_id
+        for msg in reversed(tg.get_messages(channel, limit=new_msg_count)):
+            if not msg.message: continue
+            if msg.id <= saved_msg_id: continue
+            for keyword in keywords:
+                if re.search(keyword, msg.message.lower()):
+                    tg(ForwardMessagesRequest(from_peer=peers[channel], id=[msg.id], to_peer=output_peer))
+                    break
 
     doc['lastupdate'] = str(datetime.now()+timedelta(hours=5))
     doc.save()

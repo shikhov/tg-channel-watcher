@@ -45,7 +45,7 @@ while True:
             if saved_msg_id == 0: continue
             if last_msg_id <= saved_msg_id: continue
             new_msg_count = last_msg_id - saved_msg_id
-            for msg in tg.get_messages(channel, limit=new_msg_count, reverse=True):
+            for msg in reversed(tg.get_messages(channel, limit=new_msg_count)):
                 if not msg.message: continue
                 if msg.id <= saved_msg_id: continue
                 match = False

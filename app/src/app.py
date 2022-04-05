@@ -1,22 +1,30 @@
 import json
 import re
+import os
 import time
+import logging
 from datetime import datetime
 from datetime import timedelta
 
 from cloudant.client import Cloudant
 from telethon.sessions import StringSession
 from telethon.sync import TelegramClient
+from cloudant.adapters import Replay429Adapter
 
-creds = json.load(open('creds.json'))
+from config import DBNAME
 
-dbname = creds['dbname']
-dbuser = creds['username']
-dbpass = creds['password']
-dburl = 'https://' + creds['host']
-dbclient = Cloudant(dbuser, dbpass, url=dburl, connect=True)
+logging.basicConfig(level=logging.INFO)
 
-db = dbclient[dbname]
+curdir = os.path.dirname(os.path.abspath(__file__))
+credsfile = os.path.join(curdir, 'creds.json')
+creds = json.load(open(credsfile))
+DB_APIKEY = creds['apikey']
+DB_URL = creds['url']
+
+def getDb(dbname):
+    return Cloudant.iam(None, DB_APIKEY, url=DB_URL, connect=True, adapter=Replay429Adapter(retries=10, initialBackoff=0.1))[dbname]
+
+db = getDb(DBNAME)
 settings = db['settings']
 api_id = settings['api_id']
 api_hash = settings['api_hash']
@@ -26,13 +34,13 @@ tg = TelegramClient(StringSession(session), api_id, api_hash)
 tg.start()
 
 while True:
-    dbclient.connect()
-    db = dbclient[dbname]
+    db = getDb(DBNAME)
     settings = db['settings']
     profiles = settings['profiles']
     sleeptimer = settings['sleeptimer']
 
     for profile_name in profiles:
+        logging.info(profile_name)
         profile = db[profile_name]
         channels = profile['channels']
         keywords = profile['keywords']
@@ -64,5 +72,7 @@ while True:
         profile['lastupdate'] = str(datetime.now()+timedelta(hours=5))
         profile.save()
 
-    dbclient.disconnect()
+    logging.info(f'Sleeping for {sleeptimer} seconds...')
     time.sleep(sleeptimer)
+
+

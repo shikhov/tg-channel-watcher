@@ -1,0 +1,1 @@
+DBNAME = 'tg-channel-watcher'

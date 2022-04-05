@@ -6,11 +6,7 @@
 
 # Развертывание
 - Создать в IBM Cloud ресурс Cloudant. Создать Service credentials, открыть View credentials, сохранить как `app/src/creds.json`
-- Добавить в `app/src/creds.json` ключ `dbname` — имя БД в сервисе Cloudant, в которой будут храниться настройки. Пример:
- ```
- "dbname": "tg-сhannel-watcher",
-```
-- Создать БД с именем `tg-сhannel-watcher`, в ней создать документ `settings`
+- Создать БД с именем, указанным в `config.py`, в ней создать документ `settings`
 
 - Получить api_id и api_hash для приложения на https://my.telegram.org
 - С помощью фреймворка Telethon произвести аутентификацию на сервере Telegram, сохранить string session. См.: https://telethon.readthedocs.io/en/latest/concepts/sessions.html#string-sessions
@@ -31,6 +27,7 @@
 ```
 
 - Создать и заполнить документы профилей:
+    - `_id` — имя профиля
     - `channels` — список имен Telegram-каналов и номер последнего сообщения, с которого начинать отслеживание. Чтобы начать с последнего, указать 0
     - `keywords` — ключевые слова (могут быть регулярными выражениями)
     - `any_matching` — true, если достаточно совпадения одного из ключевых слов; false, если совпадения должны быть по всем
@@ -51,5 +48,5 @@
   "any_matching": true,
   "output_channel": "travelekb",
 ```
-- Установить Docker вручную или через плейбук `ansible/aws2_install_docker.yml` (написан для образа Amazon Linux 2 AMI)
+
 - Развернуть Dockerfile вручную или через плейбук `ansible/rebuild_container.yml`

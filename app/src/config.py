@@ -1,1 +1,2 @@
-DBNAME = 'tg-channel-watcher'
+DBNAME = 'tgcw'
+CONNSTRING = ''

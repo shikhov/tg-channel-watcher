@@ -6,26 +6,26 @@
     appname: tgcw
 
   tasks:
-  - name: Delete src directory from host
-    file:
-      path: /{{appname}}
-      state: absent
+  - name: Sync src folder
+    synchronize: src='../app' dest='/{{appname}}'
 
-  - name: Copy src to host
-    copy:
-      src: ../app
-      dest: /{{appname}}
+  - name: Copy config
+    copy: src={{ item.src }} dest={{ item.dest }}
+    with_items:
+      - { src: "../../config/config_prod.py", dest: "/{{appname}}/app/src/config.py" }
 
   - name: Delete old image
     docker_image:
       name: "{{appname}}-image"
       state: absent
-      force: yes
+      force_absent: yes
 
   - name: Build new image
     docker_image:
-      path: /{{appname}}/app
+      build:
+        path: /{{appname}}/app
       name: "{{appname}}-image"
+      source: build
 
   - name: Run container
     docker_container:

@@ -1,31 +1,18 @@
-import json
-import re
-import os
-import time
 import logging
-from datetime import datetime
-from datetime import timedelta
+import re
+import time
+from datetime import datetime, timedelta
 
-from cloudant.client import Cloudant
+from pymongo import MongoClient
 from telethon.sessions import StringSession
 from telethon.sync import TelegramClient
-from cloudant.adapters import Replay429Adapter
 
-from config import DBNAME
+from config import CONNSTRING, DBNAME
 
 logging.basicConfig(level=logging.INFO)
 
-curdir = os.path.dirname(os.path.abspath(__file__))
-credsfile = os.path.join(curdir, 'creds.json')
-creds = json.load(open(credsfile))
-DB_APIKEY = creds['apikey']
-DB_URL = creds['url']
-
-def getDb(dbname):
-    return Cloudant.iam(None, DB_APIKEY, url=DB_URL, connect=True, adapter=Replay429Adapter(retries=10, initialBackoff=0.1))[dbname]
-
-db = getDb(DBNAME)
-settings = db['settings']
+db = MongoClient(CONNSTRING).get_database(DBNAME)
+settings = db.settings.find_one({'_id': 'settings'})
 api_id = settings['api_id']
 api_hash = settings['api_hash']
 session = settings['session']
@@ -34,14 +21,14 @@ tg = TelegramClient(StringSession(session), api_id, api_hash)
 tg.start()
 
 while True:
-    db = getDb(DBNAME)
-    settings = db['settings']
+    db = MongoClient(CONNSTRING).get_database(DBNAME)
+    settings = db.settings.find_one({'_id': 'settings'})
     profiles = settings['profiles']
     sleeptimer = settings['sleeptimer']
 
     for profile_name in profiles:
-        logging.info(profile_name)
-        profile = db[profile_name]
+        logging.info("Profile: " + profile_name)
+        profile = db.profiles.find_one({'name': profile_name})
         channels = profile['channels']
         keywords = profile['keywords']
         output_channel = profile['output_channel']
@@ -70,8 +57,9 @@ while True:
                     msg.forward_to(output_channel)
 
         profile['lastupdate'] = str(datetime.now()+timedelta(hours=5))
-        profile.save()
+        db.profiles.update_one({'name' : profile_name}, {'$set': profile})
 
+    db.client.close()
     logging.info(f'Sleeping for {sleeptimer} seconds...')
     time.sleep(sleeptimer)
 

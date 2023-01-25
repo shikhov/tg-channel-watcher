@@ -4,9 +4,9 @@ import time
 from datetime import datetime, timedelta
 
 from pymongo import MongoClient
-from telethon.sessions import StringSession
 from telethon.sync import TelegramClient
 
+from session import MyStringSession
 from config import CONNSTRING, DBNAME
 
 logging.basicConfig(level=logging.INFO)
@@ -17,7 +17,7 @@ api_id = settings['api_id']
 api_hash = settings['api_hash']
 session = settings['session']
 
-tg = TelegramClient(StringSession(session), api_id, api_hash)
+tg = TelegramClient(MyStringSession(session), api_id, api_hash)
 tg.start()
 
 while True:
@@ -27,13 +27,13 @@ while True:
     sleeptimer = settings['sleeptimer']
 
     for profile_name in profiles:
-        logging.info("Profile: " + profile_name)
         profile = db.profiles.find_one({'name': profile_name})
         channels = profile['channels']
         keywords = profile['keywords']
         output_channel = profile['output_channel']
         any_matching = profile['any_matching']
         for channel in channels:
+            logging.info(f'[{profile_name}]{channel}')
             saved_msg_id = channels[channel]
             last_msg_id = tg.get_messages(channel, limit=1)[0].id
             channels[channel] = last_msg_id

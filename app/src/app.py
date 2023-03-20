@@ -2,6 +2,7 @@ import logging
 import re
 import time
 from datetime import datetime, timedelta
+from hashlib import md5
 
 from pymongo import MongoClient
 from telethon.sync import TelegramClient
@@ -19,6 +20,7 @@ session = settings['session']
 
 tg = TelegramClient(MyStringSession(session), api_id, api_hash)
 tg.start()
+sent = {}
 
 while True:
     db = MongoClient(CONNSTRING).get_database(DBNAME)
@@ -33,6 +35,7 @@ while True:
         output_channel = profile['output_channel']
         any_matching = profile['any_matching']
         for channel in channels:
+            time.sleep(10)
             logging.info(f'[{profile_name}]{channel}')
             saved_msg_id = channels[channel]
             last_msg_id = tg.get_messages(channel, limit=1)[0].id
@@ -46,7 +49,7 @@ while True:
                 match = False
                 matched_count = 0
                 for keyword in keywords:
-                    if re.search(keyword, msg.message.lower()):
+                    if re.search(keyword, msg.message, re.IGNORECASE):
                         matched_count += 1
                         if any_matching:
                             match = True
@@ -54,7 +57,20 @@ while True:
                     elif not any_matching: break
 
                 if match or matched_count == len(keywords):
-                    msg.forward_to(output_channel)
+                    if not msg.from_id:
+                        msg.forward_to(output_channel)
+                    else:
+                        foo = f'{msg.from_id.user_id}_{msg.message}'.encode('utf-8')
+                        msg_hash = md5(foo).hexdigest()
+                        if msg_hash not in sent:
+                            if 'joinchat' not in channel:
+                                msg.raw_text += f'\nt.me/{channel}/{msg.id}'
+                            else:
+                                channel_id = str(msg.chat_id).replace('-100', '')
+                                msg.raw_text += f'\nt.me/c/{channel_id}/{msg.id}\n{channel}'
+                            tg.send_message(output_channel, msg)
+
+                        sent[msg_hash] = 1
 
         profile['lastupdate'] = str(datetime.now()+timedelta(hours=5))
         db.profiles.update_one({'name' : profile_name}, {'$set': profile})

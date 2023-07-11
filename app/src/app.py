@@ -44,27 +44,40 @@ def checkMessage():
 
 def forwardMessage():
     if not msg.from_id:
-        msg.forward_to(output_channel)
+        if hide_forward:
+            trimMessage(False)
+            tg.send_message(output_channel, msg)
+        else:
+            msg.forward_to(output_channel)
         return
 
     foo = f'{msg.from_id.user_id}_{msg.message}'.encode('utf-8')
     msg_hash = md5(foo).hexdigest()
     if msg_hash not in sent:
-        if 'joinchat' not in channel:
-            link = f'\nt.me/{channel}/{msg.id}'
-        else:
-            channel_id = str(msg.chat_id).replace('-100', '')
-            link = f'\nt.me/c/{channel_id}/{msg.id}\n{channel}'
-        max_length = 4096
-        if msg.photo or msg.video or msg.audio or msg.document:
-            max_length = 1024
-        if len(msg.raw_text) + len(link) > max_length:
-            trim_length = max_length - len(link) - 1
-            msg.raw_text = msg.raw_text[0:trim_length] + '…'
-        msg.raw_text += link
+        trimMessage(True)
         tg.send_message(output_channel, msg)
 
     sent[msg_hash] = 1
+
+def trimMessage(always_include_link):
+    max_length = 4096
+    if msg.photo or msg.video or msg.audio or msg.document:
+        max_length = 1024
+
+    if 'joinchat' in channel:
+        channel_id = str(msg.chat_id).replace('-100', '')
+        link = f'\nt.me/c/{channel_id}/{msg.id}\n{channel}'
+    else:
+        link = f'\nt.me/{channel}/{msg.id}'
+    trim_length = max_length - len(link) - 1
+
+    if always_include_link:
+        if len(msg.raw_text) + len(link) > max_length:
+            msg.raw_text = msg.raw_text[0:trim_length] + '…'
+        msg.raw_text += link
+    elif len(msg.raw_text) > max_length:
+        msg.raw_text = msg.raw_text[0:trim_length] + '…'
+        msg.raw_text += link
 
 
 logging.basicConfig(level=logging.INFO)
@@ -93,6 +106,7 @@ while True:
         rules = profile_doc['rules']
         output_channel = profile_doc['output_channel']
         any_matching = profile_doc['any_matching']
+        hide_forward = profile_doc.get('hide_forward')
         for channel in channels:
             time.sleep(10)
             logging.info(f'[{profile_name}]{channel}')

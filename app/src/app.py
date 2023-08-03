@@ -10,7 +10,41 @@ from telethon.sync import TelegramClient
 from session import MyStringSession
 from config import CONNSTRING, DBNAME
 
-def checkMessage():
+def processRules():
+    for msg in reversed(tg.get_messages(channel, limit=new_msg_count)):
+        if msg.id <= saved_msg_id: continue
+        if checkMessage(msg): forwardMessage(msg)
+
+
+def processAllMessages():
+    albums = {}
+    non_album = []
+
+    for msg in reversed(tg.get_messages(channel, limit=new_msg_count)):
+        if msg.id <= saved_msg_id: continue
+        if msg.grouped_id:
+            if msg.grouped_id in albums:
+                albums[msg.grouped_id].append(msg)
+            else:
+                albums[msg.grouped_id] = [msg]
+        else:
+            non_album.append(msg)
+
+    msg_array = {}
+    for album in albums.values():
+        msg_array[album[0].id] = album
+    for msg in non_album:
+        msg_array[msg.id] = msg
+    for msg_id in sorted(msg_array.keys()):
+        try:
+            tg.forward_messages(output_channel, msg_array[msg_id])
+        except Exception:
+            pass
+
+
+def checkMessage(msg):
+    if not msg.message: return False
+
     matched_count = 0
     for rule in rules:
         rule_regex = rule['regex']
@@ -42,10 +76,11 @@ def checkMessage():
 
     return False
 
-def forwardMessage():
+
+def forwardMessage(msg):
     if not msg.from_id:
         if hide_forward:
-            trimMessage(False)
+            trimMessage(msg, False)
             tg.send_message(output_channel, msg)
         else:
             msg.forward_to(output_channel)
@@ -54,12 +89,13 @@ def forwardMessage():
     foo = f'{msg.from_id.user_id}_{msg.message}'.encode('utf-8')
     msg_hash = md5(foo).hexdigest()
     if msg_hash not in sent:
-        trimMessage(True)
+        trimMessage(msg, True)
         tg.send_message(output_channel, msg)
 
     sent[msg_hash] = 1
 
-def trimMessage(always_include_link):
+
+def trimMessage(msg, always_include_link):
     max_length = 4096
     if msg.photo or msg.video or msg.audio or msg.document:
         max_length = 1024
@@ -103,10 +139,11 @@ while True:
         profile_name = profile['name']
         profile_doc = db.profiles.find_one({'name': profile_name})
         channels = profile_doc['channels']
-        rules = profile_doc['rules']
         output_channel = profile_doc['output_channel']
-        any_matching = profile_doc['any_matching']
+        rules = profile_doc.get('rules')
+        any_matching = profile_doc.get('any_matching')
         hide_forward = profile_doc.get('hide_forward')
+        all_messages = profile_doc.get('all_messages')
         for channel in channels:
             time.sleep(10)
             logging.info(f'[{profile_name}]{channel}')
@@ -116,10 +153,11 @@ while True:
             if saved_msg_id == 0: continue
             if last_msg_id <= saved_msg_id: continue
             new_msg_count = last_msg_id - saved_msg_id
-            for msg in reversed(tg.get_messages(channel, limit=new_msg_count)):
-                if not msg.message: continue
-                if msg.id <= saved_msg_id: continue
-                if checkMessage(): forwardMessage()
+
+            if all_messages:
+                processAllMessages()
+            else:
+                processRules()
 
         profile_doc['lastupdate'] = str(datetime.now()+timedelta(hours=5))
         db.profiles.update_one({'name' : profile_name}, {'$set': profile_doc})

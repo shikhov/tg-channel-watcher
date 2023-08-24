@@ -115,6 +115,7 @@ def trimMessage(msg, always_include_link):
         msg.raw_text = msg.raw_text[0:trim_length] + '…'
         msg.raw_text += link
 
+DELAY = 10
 
 logging.basicConfig(level=logging.INFO)
 
@@ -133,6 +134,7 @@ while True:
     settings = db.settings.find_one({'_id': 'settings'})
     profiles = settings['profiles']
     sleeptimer = settings['sleeptimer']
+    i = 0
 
     for profile in profiles:
         if not profile['enable']: continue
@@ -145,7 +147,8 @@ while True:
         hide_forward = profile_doc.get('hide_forward')
         all_messages = profile_doc.get('all_messages')
         for channel in channels:
-            time.sleep(10)
+            time.sleep(DELAY)
+            i += 1
             logging.info(f'[{profile_name}]{channel}')
             saved_msg_id = channels[channel]
             last_msg_id = tg.get_messages(channel, limit=1)[0].id
@@ -163,7 +166,8 @@ while True:
         db.profiles.update_one({'name' : profile_name}, {'$set': profile_doc})
 
     db.client.close()
-    logging.info(f'Sleeping for {sleeptimer} seconds...')
-    time.sleep(sleeptimer)
+    actualsleep = sleeptimer - DELAY*i if sleeptimer - DELAY*i >=0 else 0
+    logging.info(f'Sleeping for {actualsleep} seconds...')
+    time.sleep(actualsleep)
 
 

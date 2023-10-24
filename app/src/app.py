@@ -150,9 +150,13 @@ while True:
             time.sleep(DELAY)
             i += 1
             logging.info(f'[{profile_name}]{channel}')
-            saved_msg_id = channels[channel]
-            last_msg_id = tg.get_messages(channel, limit=1)[0].id
+            try:
+                last_msg_id = tg.get_messages(channel, limit=1)[0].id
+            except Exception:
+                logging.info('ERROR!')
+                continue
             channels[channel] = last_msg_id
+            saved_msg_id = channels[channel]
             if saved_msg_id == 0: continue
             if last_msg_id <= saved_msg_id: continue
             new_msg_count = last_msg_id - saved_msg_id

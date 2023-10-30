@@ -155,8 +155,8 @@ while True:
             except Exception:
                 logging.info('ERROR!')
                 continue
-            channels[channel] = last_msg_id
             saved_msg_id = channels[channel]
+            channels[channel] = last_msg_id
             if saved_msg_id == 0: continue
             if last_msg_id <= saved_msg_id: continue
             new_msg_count = last_msg_id - saved_msg_id

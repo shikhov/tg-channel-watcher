@@ -11,12 +11,21 @@ from session import MyStringSession
 from config import CONNSTRING, DBNAME
 
 def processRules():
-    for msg in reversed(tg.get_messages(channel, limit=new_msg_count)):
-        if msg.id <= saved_msg_id: continue
-        if checkMessage(msg): forwardMessage(msg)
+    for msg_id in sorted(messages):
+        msg = messages[msg_id][0]
+        if checkMessage(msg):
+            forwardMessage(msg)
 
 
 def processAllMessages():
+    for msg_id in sorted(messages):
+        try:
+            tg.forward_messages(output_channel, messages[msg_id])
+        except Exception:
+            pass
+
+
+def getMessages():
     albums = {}
     non_album = []
 
@@ -34,12 +43,9 @@ def processAllMessages():
     for album in albums.values():
         msg_array[album[0].id] = album
     for msg in non_album:
-        msg_array[msg.id] = msg
-    for msg_id in sorted(msg_array.keys()):
-        try:
-            tg.forward_messages(output_channel, msg_array[msg_id])
-        except Exception:
-            pass
+        msg_array[msg.id] = [msg]
+
+    return msg_array
 
 
 def checkMessage(msg):
@@ -78,6 +84,7 @@ def checkMessage(msg):
 
 
 def forwardMessage(msg):
+    # message from channel
     if not msg.from_id:
         if hide_forward:
             trimMessage(msg, False)
@@ -86,13 +93,13 @@ def forwardMessage(msg):
             msg.forward_to(output_channel)
         return
 
+    # message from chat
     foo = f'{msg.from_id.user_id}_{msg.message}'.encode('utf-8')
     msg_hash = md5(foo).hexdigest()
     if msg_hash not in sent:
         trimMessage(msg, True)
         tg.send_message(output_channel, msg)
-
-    sent[msg_hash] = 1
+        sent[msg_hash] = 1
 
 
 def trimMessage(msg, always_include_link):
@@ -160,7 +167,7 @@ while True:
             if saved_msg_id == 0: continue
             if last_msg_id <= saved_msg_id: continue
             new_msg_count = last_msg_id - saved_msg_id
-
+            messages = getMessages()
             if all_messages:
                 processAllMessages()
             else:

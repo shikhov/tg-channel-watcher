@@ -29,6 +29,7 @@ def getMessages():
     albums = {}
     non_album = []
 
+    new_msg_count = last_msg_id - saved_msg_id
     for msg in reversed(tg.get_messages(channel, limit=new_msg_count)):
         if msg.id <= saved_msg_id: continue
         if msg.grouped_id:
@@ -148,11 +149,7 @@ while True:
         profile_name = profile['name']
         profile_doc = db.profiles.find_one({'name': profile_name})
         channels = profile_doc['channels']
-        output_channel = profile_doc['output_channel']
-        rules = profile_doc.get('rules')
-        any_matching = profile_doc.get('any_matching')
-        hide_forward = profile_doc.get('hide_forward')
-        all_messages = profile_doc.get('all_messages')
+        output = profile_doc['output']
         for channel in channels:
             time.sleep(DELAY)
             i += 1
@@ -166,12 +163,18 @@ while True:
             channels[channel] = last_msg_id
             if saved_msg_id == 0: continue
             if last_msg_id <= saved_msg_id: continue
-            new_msg_count = last_msg_id - saved_msg_id
             messages = getMessages()
-            if all_messages:
-                processAllMessages()
-            else:
-                processRules()
+            for entry in output:
+                output_channel = entry['output_channel']
+                rules = entry.get('rules')
+                any_matching = entry.get('any_matching')
+                hide_forward = entry.get('hide_forward')
+                all_messages = entry.get('all_messages')
+
+                if all_messages:
+                    processAllMessages()
+                else:
+                    processRules()
 
         profile_doc['lastupdate'] = str(datetime.now()+timedelta(hours=5))
         db.profiles.update_one({'name' : profile_name}, {'$set': profile_doc})

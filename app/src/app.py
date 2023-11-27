@@ -148,6 +148,10 @@ while True:
         if not profile['enable']: continue
         profile_name = profile['name']
         profile_doc = db.profiles.find_one({'name': profile_name})
+        if not profile_doc:
+            logging.warning(f'Profile doc "{profile_name}" not found!')
+            continue
+
         channels = profile_doc['channels']
         output = profile_doc['output']
         for channel in channels:
@@ -157,7 +161,7 @@ while True:
             try:
                 last_msg_id = tg.get_messages(channel, limit=1)[0].id
             except Exception:
-                logging.info('ERROR!')
+                logging.error('Error receiving messages!')
                 continue
             saved_msg_id = channels[channel]
             channels[channel] = last_msg_id

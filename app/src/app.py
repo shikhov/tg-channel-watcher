@@ -30,8 +30,7 @@ def checkExRules(msg):
     if not msg.message: return True
     if not ex_rules: return True
     for ex_rule in ex_rules:
-        rule_regex = ex_rule['regex']
-        if re.search(rule_regex, msg.message, re.IGNORECASE | re.DOTALL):
+        if re.search(ex_rule['regex'], msg.message, re.IGNORECASE | re.DOTALL):
             return False
     return True
 

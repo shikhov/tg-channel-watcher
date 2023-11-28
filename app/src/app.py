@@ -13,16 +13,27 @@ from config import CONNSTRING, DBNAME
 def processRules():
     for msg_id in sorted(messages):
         msg = messages[msg_id][0]
-        if checkMessage(msg):
+        if checkRules(msg):
             forwardMessage(msg)
 
 
 def processAllMessages():
     for msg_id in sorted(messages):
-        try:
-            tg.forward_messages(output_channel, messages[msg_id])
-        except Exception:
-            pass
+        if checkExRules(messages[msg_id][0]):
+            try:
+                tg.forward_messages(output_channel, messages[msg_id])
+            except Exception:
+                pass
+
+
+def checkExRules(msg):
+    if not msg.message: return True
+    if not ex_rules: return True
+    for ex_rule in ex_rules:
+        rule_regex = ex_rule['regex']
+        if re.search(rule_regex, msg.message, re.IGNORECASE | re.DOTALL):
+            return False
+    return True
 
 
 def getMessages():
@@ -49,7 +60,7 @@ def getMessages():
     return msg_array
 
 
-def checkMessage(msg):
+def checkRules(msg):
     if not msg.message: return False
 
     matched_count = 0
@@ -174,6 +185,7 @@ while True:
                 any_matching = entry.get('any_matching')
                 hide_forward = entry.get('hide_forward')
                 all_messages = entry.get('all_messages')
+                ex_rules = entry.get('ex_rules')
 
                 if all_messages:
                     processAllMessages()

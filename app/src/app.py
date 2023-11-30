@@ -144,6 +144,7 @@ api_hash = settings['api_hash']
 session = settings['session']
 
 tg = TelegramClient(MyStringSession(session), api_id, api_hash)
+tg.flood_sleep_threshold = 24 * 60 * 60
 tg.start()
 sent = {}
 

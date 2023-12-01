@@ -95,22 +95,25 @@ def checkRules(msg):
 
 
 def forwardMessage(msg):
-    # message from channel
     if not msg.from_id:
+        # message from channel
+        foo = f'{output_channel}_{msg.message}'.encode('utf-8')
+        msg_hash = md5(foo).hexdigest()
+        if msg_hash in sent: return
         if hide_forward:
             trimMessage(msg, False)
             tg.send_message(output_channel, msg)
         else:
             msg.forward_to(output_channel)
-        return
-
-    # message from chat
-    foo = f'{msg.from_id.user_id}_{msg.message}'.encode('utf-8')
-    msg_hash = md5(foo).hexdigest()
-    if msg_hash not in sent:
+    else:
+        # message from chat
+        foo = f'{msg.from_id.user_id}_{msg.message}'.encode('utf-8')
+        msg_hash = md5(foo).hexdigest()
+        if msg_hash in sent: return
         trimMessage(msg, True)
         tg.send_message(output_channel, msg)
-        sent[msg_hash] = 1
+
+    sent[msg_hash] = 1
 
 
 def trimMessage(msg, always_include_link):

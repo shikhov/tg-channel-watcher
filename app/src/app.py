@@ -152,7 +152,6 @@ tg.start()
 sent = {}
 
 while True:
-    db = MongoClient(CONNSTRING).get_database(DBNAME)
     settings = db.settings.find_one({'_id': 'settings'})
     profiles = settings['profiles']
     sleeptimer = settings['sleeptimer']
@@ -198,7 +197,6 @@ while True:
         profile_doc['lastupdate'] = str(datetime.now()+timedelta(hours=5))
         db.profiles.update_one({'name' : profile_name}, {'$set': profile_doc})
 
-    db.client.close()
     actualsleep = sleeptimer - DELAY*i if sleeptimer - DELAY*i >=0 else 0
     logging.info(f'Sleeping for {actualsleep} seconds...')
     time.sleep(actualsleep)

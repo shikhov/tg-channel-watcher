@@ -18,7 +18,7 @@
     - `api_id`, `api_hash`, `session` —  значения, полученные на предыдущих шагах
 
 Пример:
-```
+```json
 "_id": "settings",
 "profiles": [
     {
@@ -55,7 +55,7 @@
     _Идентификатор канала (или чата) может быть буквенным именем, ссылкой на вступление или числовым ID (см. документацию к Telethon)_
 
 Пример профиля с rules:
-```
+```json
 "name": "travelekb",
 "channels": {
     "piratesru": 0,
@@ -77,7 +77,7 @@
 ```
 
 Пример профиля с all_messages:
-```
+```json
 "name": "test_all",
 "channels": {
   "t.me/+_alVeiHBjGU7MGFi": 0

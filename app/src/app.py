@@ -10,6 +10,42 @@ from telethon.sync import TelegramClient
 from session import MyStringSession
 from config import CONNSTRING, DBNAME
 
+class Profile:
+    def __init__(self, doc) -> None:
+        self.name = doc['name']
+        self.channels = doc['channels']
+        self.output = doc['output']
+
+    def process(self):
+        # channels = self.doc['channels']
+        # output = profile_doc['output']
+        for channel in self.channels:
+            time.sleep(DELAY)
+            i += 1
+            logging.info(f'[{self.name}]{channel}')
+            try:
+                last_msg_id = tg.get_messages(channel, limit=1)[0].id
+            except Exception:
+                logging.error('Error receiving messages!')
+                continue
+            saved_msg_id = self.channels[channel]
+            channels[channel] = last_msg_id
+            if saved_msg_id == 0: continue
+            if last_msg_id <= saved_msg_id: continue
+            messages = getMessages()
+            for entry in output:
+                output_channel = entry['output_channel']
+                rules = entry.get('rules')
+                any_matching = entry.get('any_matching')
+                hide_forward = entry.get('hide_forward')
+                all_messages = entry.get('all_messages')
+                ex_rules = entry.get('ex_rules')
+
+                if all_messages:
+                    processAllMessages()
+                else:
+                    processRules()
+
 def processRules():
     for msg_id in sorted(messages):
         msg = messages[msg_id][0]
@@ -165,7 +201,7 @@ while True:
             logging.warning(f'Profile doc "{profile_name}" not found!')
             continue
 
-        channels = profile_doc['channels']
+        # channels = profile_doc['channels']
         output = profile_doc['output']
         for channel in channels:
             time.sleep(DELAY)

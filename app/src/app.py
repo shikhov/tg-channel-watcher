@@ -101,7 +101,10 @@ class Action:
     def processRules(self):
         for msg in self.messages.values():
             if self.checkRules(msg[0]):
-                self.forwardMessage(msg[0])
+                try:
+                    self.forwardMessage(msg[0])
+                except Exception:
+                    pass
 
     def checkRules(self, msg):
         if not msg.message: return False

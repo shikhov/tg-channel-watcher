@@ -186,9 +186,10 @@ class Action:
 
 
 class Logger:
+    HASHTAG = '#tgcw'
+
     def __init__(self, logchatid) -> None:
         self.logchatid = logchatid
-        self.hashtag = '#tgcw'
 
     def set_profile(self, profile: Profile):
         self.profile = profile
@@ -218,7 +219,7 @@ class Logger:
         if not tg: return
         if not self.logchatid: return
 
-        header = f'{self.hashtag}\n'
+        header = f'{self.HASHTAG}\n'
         if extended:
             header += '<pre>'
             header += f'Profile: {self.profile.name}\n'

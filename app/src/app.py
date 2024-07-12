@@ -3,6 +3,7 @@ import re
 import time
 from datetime import datetime, timedelta
 from hashlib import md5
+from logging import INFO, WARNING, ERROR
 
 from pymongo import MongoClient
 from telethon.sync import TelegramClient
@@ -19,24 +20,25 @@ class Profile:
         self.count = 0
 
     def process(self):
-        for channel in self.channels:
+        for self.channel in self.channels:
             time.sleep(DELAY)
+            self.action = None
             self.count += 1
-            logging.info(f'[{self.name}]{channel}')
+            logger.info(msg=f'[{self.name}]{self.channel}')
             try:
-                last_msg_id = tg.get_messages(channel, limit=1)[0].id
-            except Exception:
-                logging.error('Error receiving messages!')
+                last_msg_id = client.get_messages(self.channel, limit=1)[0].id
+            except Exception as e:
+                logger.warning(msg=f'Error receiving messages!\n{e}', tg=True, extended=True)
                 continue
-            saved_msg_id = self.channels[channel]
-            self.doc['channels'][channel] = last_msg_id
+            saved_msg_id = self.channels[self.channel]
+            self.doc['channels'][self.channel] = last_msg_id
             if last_msg_id <= saved_msg_id: continue
             if saved_msg_id == 0: continue
-            messages = self.getMessages(channel, saved_msg_id, last_msg_id)
+            messages = self.getMessages(self.channel, saved_msg_id, last_msg_id)
             if not messages: continue
             for output in self.output:
-                action = Action(output, messages, channel)
-                action.run()
+                self.action = Action(output, messages, self.channel)
+                self.action.run()
 
         self.doc['lastupdate'] = str(datetime.now()+timedelta(hours=5))
         db.profiles.update_one({'name' : self.name}, {'$set': self.doc})
@@ -46,7 +48,7 @@ class Profile:
         albums = {}
         non_album = []
 
-        for msg in reversed(tg.get_messages(channel, limit=last_msg_id-saved_msg_id)):
+        for msg in reversed(client.get_messages(channel, limit=last_msg_id-saved_msg_id)):
             if msg.id <= saved_msg_id: continue
             if msg.grouped_id:
                 if msg.grouped_id in albums:
@@ -83,12 +85,13 @@ class Action:
             self.processRules()
 
     def processAllMessages(self):
-        for msg in self.messages.values():
-            if self.checkExRules(msg[0]):
+        for self.msg in self.messages.values():
+            if self.checkExRules(self.msg[0]):
                 try:
-                    tg.forward_messages(self.output_channel, msg)
-                except Exception:
-                    pass
+                    client.forward_messages(self.output_channel, self.msg)
+                except Exception as e:
+                    logger.warning(msg=f'Error forwarding!\n{e}', tg=True, extended=True)
+
 
     def checkExRules(self, msg):
         if not msg.message: return True
@@ -99,12 +102,12 @@ class Action:
         return True
 
     def processRules(self):
-        for msg in self.messages.values():
-            if self.checkRules(msg[0]):
+        for self.msg in self.messages.values():
+            if self.checkRules(self.msg[0]):
                 try:
-                    self.forwardMessage(msg[0])
-                except Exception:
-                    pass
+                    self.forwardMessage(self.msg[0])
+                except Exception as e:
+                    logger.warning(msg=f'Error forwarding!\n{e}', tg=True, extended=True)
 
     def checkRules(self, msg):
         if not msg.message: return False
@@ -118,7 +121,7 @@ class Action:
                     try:
                         rule_result = eval(rule_eval)
                     except Exception:
-                        logging.info('Error with eval: ' + rule_eval)
+                        logger.error(msg='Error with eval: ' + rule_eval, tg=True, extended=True)
                         break
 
                     if rule_result:
@@ -148,7 +151,7 @@ class Action:
             if msg_hash in sent: return
             if self.hide_forward:
                 self.trimMessage(msg, False)
-                tg.send_message(self.output_channel, msg)
+                client.send_message(self.output_channel, msg)
             else:
                 msg.forward_to(self.output_channel)
         else:
@@ -157,7 +160,7 @@ class Action:
             msg_hash = md5(foo).hexdigest()
             if msg_hash in sent: return
             self.trimMessage(msg, True)
-            tg.send_message(self.output_channel, msg)
+            client.send_message(self.output_channel, msg)
 
         sent[msg_hash] = 1
 
@@ -182,6 +185,56 @@ class Action:
             msg.raw_text += link
 
 
+class Logger:
+    def __init__(self, logchatid) -> None:
+        self.logchatid = logchatid
+        self.hashtag = '#tgcw'
+
+    def set_profile(self, profile: Profile):
+        self.profile = profile
+
+    def info(self, msg, tg=False, extended=False):
+        self._log(INFO, msg, tg, extended)
+
+    def warning(self, msg, tg=False, extended=False):
+        self._log(WARNING, msg, tg, extended)
+
+    def error(self, msg, tg=False, extended=False):
+        self._log(ERROR, msg, tg, extended)
+
+    def _log(self, level, msg, tg, extended):
+        if level == INFO:
+            logging.info(msg)
+            icon = 'ℹ️ '
+
+        if level == WARNING:
+            logging.warning(msg)
+            icon = '⚠️ '
+
+        if level == ERROR:
+            logging.error(msg)
+            icon = '⛔️ '
+
+        if not tg: return
+        if not self.logchatid: return
+
+        header = f'{self.hashtag}\n'
+        if extended:
+            header += '<pre>'
+            header += f'Profile: {self.profile.name}\n'
+            header += f'Channel: {self.profile.channel}\n'
+            if self.profile.action:
+                header += f'MsgID: {self.profile.action.msg[0].id}\n'
+                header += f'Output Channel: {self.profile.action.output_channel}\n'
+            header += '</pre>'
+        msg = header + icon + msg
+
+        try:
+            client.send_message(self.logchatid, msg, parse_mode='HTML')
+        except Exception as e:
+            self.error(e)
+
+
 DELAY = 10
 
 logging.basicConfig(level=logging.INFO)
@@ -191,10 +244,11 @@ settings = db.settings.find_one({'_id': 'settings'})
 api_id = settings['api_id']
 api_hash = settings['api_hash']
 session = settings['session']
+logger = Logger(settings.get('logchatid'))
 
-tg = TelegramClient(MyStringSession(session), api_id, api_hash)
-tg.flood_sleep_threshold = 24 * 60 * 60
-tg.start()
+client = TelegramClient(MyStringSession(session), api_id, api_hash)
+client.flood_sleep_threshold = 24 * 60 * 60
+client.start()
 sent = {}
 
 while True:
@@ -208,15 +262,16 @@ while True:
         profile_name = profile['name']
         profile_doc = db.profiles.find_one({'name': profile_name})
         if not profile_doc:
-            logging.warning(f'Profile doc "{profile_name}" not found!')
+            logger.info(msg=f'Profile doc "{profile_name}" not found!', tg=True)
             continue
 
         p = Profile(doc=profile_doc)
+        logger.set_profile(p)
         p.process()
         count += p.count
 
     actualsleep = sleeptimer - DELAY*count if sleeptimer - DELAY*count > 0 else 0
-    logging.info(f'Sleeping for {actualsleep} seconds...')
+    logger.info(msg=f'Sleeping for {actualsleep} seconds...')
     time.sleep(actualsleep)
 
 

@@ -28,6 +28,7 @@
     }
   ],
   "sleeptimer": 300,
+  "logchatid": -1002243669517,
   "api_id": 123456,
   "api_hash": "your_api_hash",
   "session": "your_string_session"

@@ -85,13 +85,9 @@ class Action:
             self.processRules()
 
     def processAllMessages(self):
-        for self.msg in self.messages.values():
-            if self.checkExRules(self.msg[0]):
-                try:
-                    client.forward_messages(self.output_channel, self.msg)
-                except Exception as e:
-                    logger.warning(msg=f'Error forwarding!\n{e}', tg=True, extended=True)
-
+        for msg in self.messages.values():
+            if self.checkExRules(msg[0]):
+                self.forwardMessage(msg)
 
     def checkExRules(self, msg):
         if not msg.message: return True
@@ -102,12 +98,9 @@ class Action:
         return True
 
     def processRules(self):
-        for self.msg in self.messages.values():
-            if self.checkRules(self.msg[0]):
-                try:
-                    self.forwardMessage(self.msg[0])
-                except Exception as e:
-                    logger.warning(msg=f'Error forwarding!\n{e}', tg=True, extended=True)
+        for msg in self.messages.values():
+            if self.checkRules(msg[0]):
+                self.forwardMessage(msg)
 
     def checkRules(self, msg):
         if not msg.message: return False
@@ -143,26 +136,36 @@ class Action:
         return False
 
 
-    def forwardMessage(self, msg):
-        if not msg.from_id:
-            # message from channel
-            foo = f'{self.output_channel}_{msg.message}'.encode('utf-8')
-            msg_hash = md5(foo).hexdigest()
-            if msg_hash in sent: return
-            if self.hide_forward:
-                self.trimMessage(msg, False)
-                client.send_message(self.output_channel, msg)
+    def forwardMessage(self, msg_list):
+        try:
+            if self.all_messages:
+                client.forward_messages(self.output_channel, msg_list)
             else:
-                msg.forward_to(self.output_channel)
-        else:
-            # message from chat
-            foo = f'{msg.from_id.user_id}_{msg.message}'.encode('utf-8')
-            msg_hash = md5(foo).hexdigest()
-            if msg_hash in sent: return
-            self.trimMessage(msg, True)
-            client.send_message(self.output_channel, msg)
+                msg = msg_list[0]
+                if not msg.from_id:
+                    # message from channel
+                    foo = f'{self.output_channel}_{msg.message}'.encode('utf-8')
+                    msg_hash = md5(foo).hexdigest()
+                    if msg_hash in sent: return
+                    if self.hide_forward:
+                        self.trimMessage(msg, False)
+                        client.send_message(self.output_channel, msg)
+                    else:
+                        msg.forward_to(self.output_channel)
+                else:
+                    # message from chat
+                    foo = f'{msg.from_id.user_id}_{msg.message}'.encode('utf-8')
+                    msg_hash = md5(foo).hexdigest()
+                    if msg_hash in sent: return
+                    self.trimMessage(msg, True)
+                    client.send_message(self.output_channel, msg)
 
-        sent[msg_hash] = 1
+                sent[msg_hash] = 1
+        except TypeError as e:
+            logger.warning(msg='Error forwarding!\n' + str(e))
+        except Exception as e:
+            logger.warning(msg='Error forwarding!\n' + str(e), tg=True, extended=True)
+
 
     def trimMessage(self, msg, always_include_link):
         max_length = 4096

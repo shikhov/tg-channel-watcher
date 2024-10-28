@@ -85,9 +85,9 @@ class Action:
             self.processRules()
 
     def processAllMessages(self):
-        for msg in self.messages.values():
-            if self.checkExRules(msg[0]):
-                self.forwardMessage(msg)
+        for self.msg in self.messages.values():
+            if self.checkExRules(self.msg[0]):
+                self.forwardMessage(self.msg)
 
     def checkExRules(self, msg):
         if not msg.message: return True
@@ -98,9 +98,9 @@ class Action:
         return True
 
     def processRules(self):
-        for msg in self.messages.values():
-            if self.checkRules(msg[0]):
-                self.forwardMessage(msg)
+        for self.msg in self.messages.values():
+            if self.checkRules(self.msg[0]):
+                self.forwardMessage(self.msg)
 
     def checkRules(self, msg):
         if not msg.message: return False

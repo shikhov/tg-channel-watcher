@@ -242,7 +242,7 @@ class Logger:
 
 DELAY = 10
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 
 db = MongoClient(CONNSTRING).get_database(DBNAME)
 settings = db.settings.find_one({'_id': 'settings'})

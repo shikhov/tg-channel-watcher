@@ -39,7 +39,6 @@ class Profile:
             for output in self.output:
                 self.action = Action(output, messages, self.channel)
                 self.action.run()
-                self.action = None
 
         self.doc['lastupdate'] = str(datetime.now()+timedelta(hours=5))
         db.profiles.update_one({'name' : self.name}, {'$set': self.doc})

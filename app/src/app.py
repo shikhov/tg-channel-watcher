@@ -222,7 +222,7 @@ class Logger:
         if not tg: return
         if not self.logchatid: return
 
-        header = f'{self.HASHTAG}\n'
+        header = ''
         if extended:
             header += '<pre>'
             header += f'Profile: {self.profile.name}\n'
@@ -231,7 +231,7 @@ class Logger:
                 header += f'MsgID: {self.profile.action.msg[0].id}\n'
                 header += f'Output Channel: {self.profile.action.output_channel}\n'
             header += '</pre>'
-        msg = header + icon + msg
+        msg = header + icon + msg + f'\n{self.HASHTAG}'
 
         try:
             client.send_message(self.logchatid, msg, parse_mode='HTML')

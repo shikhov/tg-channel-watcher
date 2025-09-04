@@ -32,10 +32,13 @@ class Profile:
                 continue
             saved_msg_id = self.channels[self.channel]
             self.doc['channels'][self.channel] = last_msg_id
-            if last_msg_id <= saved_msg_id: continue
-            if saved_msg_id == 0: continue
+            if last_msg_id <= saved_msg_id:
+                continue
+            if saved_msg_id == 0:
+                continue
             messages = self.getMessages(self.channel, saved_msg_id, last_msg_id)
-            if not messages: continue
+            if not messages:
+                continue
             for output in self.output:
                 self.action = Action(output, messages, self.channel)
                 self.action.run()
@@ -49,7 +52,8 @@ class Profile:
         non_album = []
 
         for msg in reversed(client.get_messages(channel, limit=last_msg_id-saved_msg_id)):
-            if msg.id <= saved_msg_id: continue
+            if msg.id <= saved_msg_id:
+                continue
             if msg.grouped_id:
                 if msg.grouped_id in albums:
                     albums[msg.grouped_id].append(msg)
@@ -85,25 +89,30 @@ class Action:
             self.processRules()
 
     def processAllMessages(self):
-        for self.msg in self.messages.values():
-            if self.checkExRules(self.msg[0]):
-                self.forwardMessage(self.msg)
+        for self.current_msg in self.messages.values():
+            if self.checkExRules():
+                self.forwardMessage()
 
-    def checkExRules(self, msg):
-        if not msg.message: return True
-        if not self.ex_rules: return True
+    def checkExRules(self):
+        msg = self.current_msg[0]
+        if not msg.message:
+            return True
+        if not self.ex_rules:
+            return True
         for ex_rule in self.ex_rules:
             if re.search(ex_rule['regex'], msg.message, re.IGNORECASE | re.DOTALL):
                 return False
         return True
 
     def processRules(self):
-        for self.msg in self.messages.values():
-            if self.checkRules(self.msg[0]):
-                self.forwardMessage(self.msg)
+        for self.current_msg in self.messages.values():
+            if self.checkRules():
+                self.forwardMessage()
 
-    def checkRules(self, msg):
-        if not msg.message: return False
+    def checkRules(self):
+        msg = self.current_msg[0]
+        if not msg.message:
+            return False
         matched_count = 0
         for rule in self.rules:
             rule_regex = rule['regex']
@@ -136,17 +145,18 @@ class Action:
         return False
 
 
-    def forwardMessage(self, msg_list):
+    def forwardMessage(self):
         try:
             if self.all_messages:
-                client.forward_messages(self.output_channel, msg_list)
+                client.forward_messages(self.output_channel, self.current_msg)
             else:
-                msg = msg_list[0]
+                msg = self.current_msg[0]
                 if not msg.from_id:
                     # message from channel
                     foo = f'{self.output_channel}_{msg.message}'.encode('utf-8')
                     msg_hash = md5(foo).hexdigest()
-                    if msg_hash in sent: return
+                    if msg_hash in sent:
+                        return
                     if self.hide_forward:
                         self.trimMessage(msg, False)
                         client.send_message(self.output_channel, msg)
@@ -156,7 +166,8 @@ class Action:
                     # message from chat
                     foo = f'{msg.from_id.user_id}_{msg.message}'.encode('utf-8')
                     msg_hash = md5(foo).hexdigest()
-                    if msg_hash in sent: return
+                    if msg_hash in sent:
+                        return
                     self.trimMessage(msg, True)
                     client.send_message(self.output_channel, msg)
 
@@ -219,8 +230,10 @@ class Logger:
             logging.error(msg)
             icon = '⛔️ '
 
-        if not tg: return
-        if not self.logchatid: return
+        if not tg:
+            return
+        if not self.logchatid:
+            return
 
         header = ''
         if extended:
@@ -228,7 +241,7 @@ class Logger:
             header += f'Profile: {self.profile.name}\n'
             header += f'Channel: {self.profile.channel}\n'
             if self.profile.action:
-                header += f'MsgID: {self.profile.action.msg[0].id}\n'
+                header += f'MsgID: {self.profile.action.current_msg[0].id}\n'
                 header += f'Output Channel: {self.profile.action.output_channel}\n'
             header += '</pre>'
         msg = header + icon + msg + f'\n{self.HASHTAG}'
@@ -262,7 +275,8 @@ while True:
     count = 0
 
     for profile in profiles:
-        if not profile['enable']: continue
+        if not profile['enable']:
+            continue
         profile_name = profile['name']
         profile_doc = db.profiles.find_one({'name': profile_name})
         if not profile_doc:

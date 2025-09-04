@@ -2,7 +2,7 @@
 Приложение отслеживает новые сообщения в каналах/чатах Telegram и пересылает те, которые подпадают под заданные правила. Пример работы: https://t.me/travelekb
 
 ## Реализация
-Приложение написано на Python 3.7 с использованием фреймворка Telethon. Хранение данных в MongoDB. Для развертывания прилагаются Dockerfile и плейбуки для [Ansible](https://www.ansible.com/) и [Spot](https://simplotask.com).
+Приложение написано на Python 3.7 с использованием фреймворка Telethon. Хранение данных в MongoDB. Для развертывания прилагаются Dockerfile и плейбуки для [Ansible](https://www.ansible.com/) и [Spot](https://spot.umputun.dev/).
 
 ## Развертывание
 

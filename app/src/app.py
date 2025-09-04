@@ -83,15 +83,15 @@ class Action:
         self.channel = channel
 
     def run(self):
-        if self.all_messages:
-            self.processAllMessages()
-        else:
-            self.processRules()
-
-    def processAllMessages(self):
         for self.current_msg in self.messages.values():
-            if self.checkExRules():
+            if self.hasToBeForwarded():
                 self.forwardMessage()
+
+    def hasToBeForwarded(self):
+        if self.all_messages:
+            return self.checkExRules()
+        else:
+            return self.checkRules()
 
     def checkExRules(self):
         msg = self.current_msg[0]
@@ -103,11 +103,6 @@ class Action:
             if re.search(ex_rule['regex'], msg.message, re.IGNORECASE | re.DOTALL):
                 return False
         return True
-
-    def processRules(self):
-        for self.current_msg in self.messages.values():
-            if self.checkRules():
-                self.forwardMessage()
 
     def checkRules(self):
         msg = self.current_msg[0]

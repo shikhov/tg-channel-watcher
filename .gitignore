@@ -1,3 +1,2 @@
-ansible/inventory/
 __pycache__
 spot/inventory/inventory.yml

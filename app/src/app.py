@@ -1,4 +1,5 @@
 import logging
+import os
 import re
 import time
 from datetime import datetime, timedelta
@@ -6,7 +7,7 @@ from hashlib import md5
 from logging import INFO, WARNING, ERROR
 
 from pymongo import MongoClient
-from telethon.sync import TelegramClient
+from telethon.sync import TelegramClient, types
 
 from session import MyStringSession
 from config import CONNSTRING, DBNAME
@@ -33,12 +34,15 @@ class Profile:
             saved_msg_id = self.channels[self.channel]
             self.doc['channels'][self.channel] = last_msg_id
             if last_msg_id <= saved_msg_id:
+                logger.debug(msg='No new messages')
                 continue
             if saved_msg_id == 0:
+                logger.debug(msg=f'Init last_msg_id to {last_msg_id}')
                 continue
-            messages = self.getMessages(self.channel, saved_msg_id, last_msg_id)
+            messages = self.get_messages(self.channel, saved_msg_id, last_msg_id)
             if not messages:
                 continue
+            logger.debug(msg=f'Got {len(messages)} new messages/albums')
             for output in self.output:
                 self.action = Action(output, messages, self.channel)
                 self.action.run()
@@ -46,8 +50,7 @@ class Profile:
         self.doc['lastupdate'] = str(datetime.now()+timedelta(hours=5))
         db.profiles.update_one({'name' : self.name}, {'$set': self.doc})
 
-
-    def getMessages(self, channel, saved_msg_id, last_msg_id):
+    def get_messages(self, channel, saved_msg_id, last_msg_id):
         albums = {}
         non_album = []
 
@@ -78,56 +81,41 @@ class Action:
         self.any_matching = output.get('any_matching')
         self.hide_forward = output.get('hide_forward')
         self.all_messages = output.get('all_messages')
+        self.filter_dupes = output.get('filter_dupes')
         self.ex_rules = output.get('ex_rules')
         self.messages = messages
         self.channel = channel
 
     def run(self):
         for self.current_msg in self.messages.values():
-            if self.hasToBeForwarded():
-                self.forwardMessage()
+            logger.debug(msg=f'Checking msg id {self.current_msg[0].id}...')
+            if self.has_to_be_forwarded():
+                self.forward_message()
 
-    def hasToBeForwarded(self):
+    def has_to_be_forwarded(self):
         if self.all_messages:
-            return self.checkExRules()
+            return self.check_ex_rules()
         else:
-            return self.checkRules()
+            return self.check_rules()
 
-    def checkExRules(self):
+    def check_ex_rules(self):
         msg = self.current_msg[0]
-        if not msg.message:
-            return True
         if not self.ex_rules:
+            logger.debug(msg='No ex_rules, forwarding message')
             return True
         for ex_rule in self.ex_rules:
-            if re.search(ex_rule['regex'], msg.message, re.IGNORECASE | re.DOTALL):
+            if self.evaluate_rule(ex_rule, msg):
+                logger.debug(msg='Message matched ex_rule, skipping')
                 return False
+            
+        logger.debug(msg='Message did not match any ex_rule, forwarding')
         return True
 
-    def checkRules(self):
-        msg = self.current_msg[0]
-        if not msg.message:
-            return False
+    def check_rules(self):
         matched_count = 0
         for rule in self.rules:
-            rule_regex = rule['regex']
-            rule_eval = rule.get('eval')
-            rule_result = False
-            if rule_eval:
-                for m in re.finditer(rule_regex, msg.message, re.IGNORECASE | re.DOTALL):
-                    try:
-                        rule_result = eval(rule_eval)
-                    except Exception:
-                        logger.error(msg='Error with eval: ' + rule_eval, tg=True, extended=True)
-                        break
-
-                    if rule_result:
-                        matched_count += 1
-                        break
-            else:
-                if re.search(rule_regex, msg.message, re.IGNORECASE | re.DOTALL):
-                    rule_result = True
-                    matched_count += 1
+            rule_result = self.evaluate_rule(rule, self.current_msg[0])
+            matched_count += rule_result
 
             if rule_result and self.any_matching:
                 return True
@@ -139,64 +127,162 @@ class Action:
 
         return False
 
+    def evaluate_rule(self, rule, msg):
+        if 'regex' in rule:
+            if not msg.message:
+                logger.debug(msg='No text, skipping regex rules')
+                return False
+            rule_regex = rule['regex']
+            rule_eval = rule.get('eval')
+            debug_info = f"regex /{rule_regex}/{' with eval (' + rule_eval + ')' if rule_eval else ''}"
 
-    def forwardMessage(self):
+            if rule_eval:
+                for m in re.finditer(rule_regex, msg.message, re.IGNORECASE | re.DOTALL):
+                    try:
+                        rule_result = eval(rule_eval)
+                    except Exception:
+                        logger.error(msg='Error with eval: ' + rule_eval, tg=True, extended=True)
+                        break
+
+                    if rule_result:
+                        logger.debug(msg=f'{debug_info} - matched')
+                        return True
+            else:
+                if re.search(rule_regex, msg.message, re.IGNORECASE | re.DOTALL):
+                    logger.debug(msg=f'{debug_info} - matched')
+                    return True
+            
+            logger.debug(msg=f'{debug_info} - did not match')
+            return False
+        
+        if 'eval' in rule and 'regex' not in rule:
+            rule_eval = rule['eval']
+            try:
+                rule_result = eval(rule_eval)
+            except Exception:
+                logger.error(msg='Error with eval: ' + rule_eval, tg=True, extended=True)
+                return False
+
+            if rule_result:
+                logger.debug(msg=f"eval '{rule_eval}' - matched")
+                return True
+            else:
+                logger.debug(msg=f"eval '{rule_eval}' - did not match")
+                return False
+        
+        logger.warning(msg='No valid rules found')
+        return False
+
+    def forward_message(self):
         try:
             if self.all_messages:
                 client.forward_messages(self.output_channel, self.current_msg)
+                logger.debug(msg=f'Message forwarded to {self.output_channel}, all_messages={self.all_messages}')
                 return
 
             msg = self.current_msg[0]
+            
+            if self.filter_dupes and msg.message:
+                msg_hash = self.calculate_msg_hash(msg)
+                if msg_hash in sent:
+                    logger.debug(msg='Message found in sent, skipping')
+                    return
+
             if not msg.from_id:
                 # message from channel
-                foo = f'{self.output_channel}_{msg.message}'.encode('utf-8')
-                msg_hash = md5(foo).hexdigest()
-                if msg_hash in sent:
-                    return
                 if self.hide_forward:
-                    self.trimMessage(msg, False)
-                    client.send_message(self.output_channel, msg)
+                    self.send_message(msg)
                 else:
                     msg.forward_to(self.output_channel)
             else:
                 # message from chat
-                foo = f'{msg.from_id.user_id}_{msg.message}'.encode('utf-8')
-                msg_hash = md5(foo).hexdigest()
-                if msg_hash in sent:
-                    return
-                self.trimMessage(msg, True)
-                client.send_message(self.output_channel, msg)
+                self.send_message(msg, force_link=True)
 
-            sent[msg_hash] = 1
+            if self.filter_dupes and msg.message:
+                sent[msg_hash] = 1
+
+            logger.debug(msg=f'Message forwarded to {self.output_channel}, hide_forward={self.hide_forward}')
+
         except TypeError as e:
             logger.warning(msg='Error forwarding!\n' + str(e))
         except Exception as e:
             logger.warning(msg='Error forwarding!\n' + str(e), tg=True, extended=True)
 
+    def calculate_msg_hash(self, msg):
+        if not msg.from_id:
+            foo = f'{self.output_channel}_{msg.message}'.encode('utf-8')
+        else:
+            foo = f'{msg.from_id.user_id}_{msg.message}'.encode('utf-8')
+        return md5(foo).hexdigest()
 
-    def trimMessage(self, msg, always_include_link):
-        max_length = 4096
+    def send_message(self, msg, force_link=False):
+        self.trim_message(msg, force_link)
+        if msg.noforwards:
+            logger.debug(msg='Message has protected content, sending as copy')
+            self.send_protected_message(msg)
+        else:
+            client.send_message(self.output_channel, msg)
+
+    def send_protected_message(self, msg):
+        if msg.media:            
+            path = msg.download_media()
+            attributes = []
+            video_note = False
+            voice_note = False
+            supports_streaming = False
+            
+            if hasattr(msg.media, 'document') and msg.media.document:
+                attributes = msg.media.document.attributes
+                for attr in attributes:
+                    if isinstance(attr, types.DocumentAttributeVideo):
+                        supports_streaming = True
+                        if attr.round_message:
+                            video_note = True
+                    elif isinstance(attr, types.DocumentAttributeAudio):
+                        if attr.voice:
+                            voice_note = True
+
+            client.send_file(
+                self.output_channel, 
+                path, 
+                caption=msg.message,
+                attributes=attributes,
+                voice_note=voice_note,
+                video_note=video_note,
+                supports_streaming=supports_streaming,
+                formatting_entities=msg.entities,
+            )
+
+            if path and os.path.exists(path):
+                os.remove(path)
+        else:
+            client.send_message(self.output_channel, msg.message, formatting_entities=msg.entities)
+
+    def trim_message(self, msg, force_link):
+        MAX_LENGTH = 4096
         if msg.photo or msg.video or msg.audio or msg.document:
-            max_length = 1024
+            MAX_LENGTH = 1024
 
         if 'joinchat' in self.channel:
             channel_id = str(msg.chat_id).replace('-100', '')
             link = f'\nt.me/c/{channel_id}/{msg.id}\n{self.channel}'
         else:
             link = f'\nt.me/{self.channel}/{msg.id}'
-        trim_length = max_length - len(link) - 1
+        trim_length = MAX_LENGTH - len(link) - 1
 
-        if always_include_link:
-            if len(msg.raw_text) + len(link) > max_length:
+        if force_link:
+            if len(msg.raw_text) + len(link) > MAX_LENGTH:
+                logger.debug(msg=f'Message too long, trimming to {MAX_LENGTH} chars')
                 msg.raw_text = msg.raw_text[0:trim_length] + '…'
             msg.raw_text += link
-        elif len(msg.raw_text) > max_length:
+        elif len(msg.raw_text) > MAX_LENGTH:
+            logger.debug(msg=f'Message too long, trimming to {MAX_LENGTH} chars')
             msg.raw_text = msg.raw_text[0:trim_length] + '…'
             msg.raw_text += link
 
-
 class Logger:
     HASHTAG = '#tgcw'
+    debug_mode = False
 
     def __init__(self, logchatid) -> None:
         self.logchatid = logchatid
@@ -212,6 +298,10 @@ class Logger:
 
     def error(self, msg, tg=False, extended=False):
         self._log(ERROR, msg, tg, extended)
+
+    def debug(self, msg, tg=False, extended=False):
+        if self.debug_mode:
+            self._log(INFO, msg, tg, extended)
 
     def _log(self, level, msg, tg, extended):
         if level == INFO:
@@ -254,12 +344,12 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(me
 
 db = MongoClient(CONNSTRING).get_database(DBNAME)
 settings = db.settings.find_one({'_id': 'settings'})
-api_id = settings['api_id']
-api_hash = settings['api_hash']
-session = settings['session']
-logger = Logger(settings.get('logchatid'))
+API_ID = settings['api_id']
+API_HASH = settings['api_hash']
+SESSION = settings['session']
+logger = Logger(logchatid=settings.get('logchatid'))
 
-client = TelegramClient(MyStringSession(session), api_id, api_hash)
+client = TelegramClient(MyStringSession(SESSION), API_ID, API_HASH)
 client.flood_sleep_threshold = 24 * 60 * 60
 client.start()
 sent = {}
@@ -268,6 +358,7 @@ while True:
     settings = db.settings.find_one({'_id': 'settings'})
     profiles = settings['profiles']
     sleeptimer = settings['sleeptimer']
+    logger.debug_mode = settings.get('debug', False)
     count = 0
 
     for profile in profiles:

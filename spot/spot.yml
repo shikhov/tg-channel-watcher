@@ -1,18 +1,19 @@
-ssh_key: /home/user44/id_rsa
-inventory: inventory/inventory.yml
+ssh_key: C:\Users\shikh\spot\id_rsa
+inventory: C:\Users\shikh\spot\inventory.yml
 
-targets: ["default"]
+tasks:
+  - name: deploy
+    commands:
+      - name: Sync src folder
+        sync: {src: "../app", dst: "$APPNAME$TARGET", delete: true}
 
-task:
-    - name: Sync src folder
-      sync: {src: "../app", dst: "$appname$target", delete: true}
+      - name: Copy config
+        copy: {src: "../../config/config$TARGET.py", dst: "$APPNAME$TARGET/src/config.py"}
 
-    - name: Copy config
-      copy: {src: "../../config/config$target.py", dst: "$appname$target/src/config.py"}
-
-    - name: Docker build and start
-      script: |
-        docker build $appname$target -t $appname$target-image
-        docker stop $appname$target || true
-        docker rm $appname$target || true
-        docker run -d --name $appname$target --restart=on-failure $appname$target-image
+      - name: Docker build and start
+        script: | # sh
+        
+          docker build $APPNAME$TARGET -t $APPNAME$TARGET-image
+          docker stop $APPNAME$TARGET || true
+          docker rm $APPNAME$TARGET || true
+          docker run -d --name $APPNAME$TARGET --restart=on-failure $APPNAME$TARGET-image

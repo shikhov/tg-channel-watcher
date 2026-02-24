@@ -356,24 +356,21 @@ sent = {}
 
 while True:
     settings = db.settings.find_one({'_id': 'settings'})
-    profiles = settings['profiles']
+    active_profiles = [p['name'] for p in settings['profiles'] if p['enable']]
     sleeptimer = settings['sleeptimer']
     logger.debug_mode = settings.get('debug', False)
     count = 0
 
-    for profile in profiles:
-        if not profile['enable']:
-            continue
-        profile_name = profile['name']
+    for profile_name in active_profiles:
         profile_doc = db.profiles.find_one({'name': profile_name})
         if not profile_doc:
             logger.info(msg=f'Profile doc "{profile_name}" not found!', tg=True)
             continue
 
-        p = Profile(doc=profile_doc)
-        logger.set_profile(p)
-        p.process()
-        count += p.count
+        profile = Profile(doc=profile_doc)
+        logger.set_profile(profile)
+        profile.process()
+        count += profile.count
 
     actualsleep = sleeptimer - DELAY*count if sleeptimer - DELAY*count > 0 else 0
     logger.info(msg=f'Sleeping for {actualsleep} seconds...')

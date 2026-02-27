@@ -13,7 +13,6 @@
 - С помощью фреймворка Telethon произвести аутентификацию на сервере Telegram, сохранить string session. См.: https://docs.telethon.dev/en/stable/concepts/sessions.html#string-sessions
 - Создать БД с именем, указанным в `config.py`, в ней создать коллекции settings и profiles
 - В коллекции settings создать документ с _id: "settings" и заполнить его:
-    - `profiles` — список профилей с настройками каналов (имя и активен/неактивен)
     - `sleeptimer` — период опроса каналов в секундах
     - `api_id`, `api_hash`, `session` — значения, полученные на предыдущих шагах
     - `logchatid` — ID чата, куда будут сбрасываться ошибки. Опциональное поле
@@ -22,23 +21,18 @@
 Пример:
 ```json
 "_id": "settings",
-"profiles": [
-    {
-      "name" : "travelekb",
-      "enable" : true
-    }
-  ],
-  "sleeptimer": 300,
-  "logchatid": -1002243669517,
-  "api_id": 123456,
-  "api_hash": "your_api_hash",
-  "session": "your_string_session",
-  "debug": true
+"sleeptimer": 300,
+"logchatid": -1002243669517,
+"api_id": 123456,
+"api_hash": "your_api_hash",
+"session": "your_string_session",
+"debug": true
 ```
 
 - В коллекции profiles создать и заполнить документы профилей:
-  - `name` — имя профиля, указанное в settings
-  - `channels` — идентификаторы Telegram-каналов (чатов) и номер последнего сообщения, с которого начинать отслеживание. Чтобы начать с последнего, указать 0
+  - `name` — имя профиля
+  - `enable` — активен/неактивен
+  - `channels` — список идентификаторов Telegram-каналов (чатов)
   - `output` — список объектов output. Объект output состоит из:
     - `rules` — правила фильтрации сообщений. В правиле может быть:
       - одно поле `regex` — регулярное выражение, на которое проверяется соообщение. Пример:
@@ -78,11 +72,12 @@
 Пример профиля с rules:
 ```json
 "name": "travelekb",
-"channels": {
-    "piratesru": 0,
-    "vandroukiru": 0,
-    "turs_sale": 0
-},
+"enable": true,
+"channels": [
+    "piratesru",
+    "vandroukiru",
+    "turs_sale"
+],
 "output": [
   {
     "rules": [
@@ -101,9 +96,10 @@
 Пример профиля с all_messages:
 ```json
 "name": "test_all",
-"channels": {
-  "durov": 0
-},
+"enable": true,
+"channels": [
+  "durov"
+],
 "output": [
   {
     "all_messages": true,

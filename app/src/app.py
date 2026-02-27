@@ -1,8 +1,7 @@
 import logging
 import os
 import re
-import time
-from datetime import datetime, timedelta
+from time import time, sleep
 from hashlib import md5
 from logging import INFO, WARNING, ERROR
 
@@ -14,15 +13,34 @@ from config import CONNSTRING, DBNAME
 
 class Profile:
     def __init__(self, doc) -> None:
-        self.doc = doc
+        self.profile_id = doc['_id']
         self.name = doc['name']
         self.channels = doc['channels']
         self.output = doc['output']
         self.count = 0
+        self.init_counters()
+
+    def init_counters(self):
+        counters_doc = db.counters.find_one({'profile_id': self.profile_id})
+        if not counters_doc:
+            result = db.counters.insert_one(
+                {
+                    'profile_id': self.profile_id,
+                    'profile_name': self.name,
+                    'counters': {str(channel): 0 for channel in self.channels},
+                }
+            )
+            counters_doc = db.counters.find_one({'_id': result.inserted_id})
+        else:
+            counters_doc['counters'] = {str(c): counters_doc['counters'].get(str(c), 0) for c in self.channels}
+            counters_doc['profile_name'] = self.name
+
+        self.counters_doc = counters_doc
+        self.counters = counters_doc['counters']
 
     def process(self):
         for self.channel in self.channels:
-            time.sleep(DELAY)
+            sleep(DELAY)
             self.action = None
             self.count += 1
             logger.info(msg=f'[{self.name}]{self.channel}')
@@ -31,8 +49,8 @@ class Profile:
             except Exception as e:
                 logger.warning(msg=f'Error receiving messages!\n{e}', tg=True, extended=True)
                 continue
-            saved_msg_id = self.channels[self.channel]
-            self.doc['channels'][self.channel] = last_msg_id
+            saved_msg_id = self.counters[str(self.channel)]
+            self.counters[str(self.channel)] = last_msg_id
             if last_msg_id <= saved_msg_id:
                 logger.debug(msg='No new messages')
                 continue
@@ -47,8 +65,12 @@ class Profile:
                 self.action = Action(output, messages, self.channel)
                 self.action.run()
 
-        self.doc['lastupdate'] = str(datetime.now()+timedelta(hours=5))
-        db.profiles.update_one({'name' : self.name}, {'$set': self.doc})
+        self.update_counters()
+
+    def update_counters(self):
+        self.counters_doc['counters'] = self.counters
+        self.counters_doc['lastupdate'] = int(time())
+        db.counters.update_one({'_id': self.counters_doc['_id']}, {'$set': self.counters_doc})
 
     def get_messages(self, channel, saved_msg_id, last_msg_id):
         albums = {}
@@ -341,6 +363,7 @@ class Logger:
 DELAY = 10
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
+logging.getLogger('telethon').setLevel(logging.WARNING)
 
 db = MongoClient(CONNSTRING).get_database(DBNAME)
 settings = db.settings.find_one({'_id': 'settings'})
@@ -348,25 +371,25 @@ API_ID = settings['api_id']
 API_HASH = settings['api_hash']
 SESSION = settings['session']
 logger = Logger(logchatid=settings.get('logchatid'))
+sent = {}
+
+if 'counters' not in db.list_collection_names():
+    db.create_collection('counters')
 
 client = TelegramClient(MyStringSession(SESSION), API_ID, API_HASH)
 client.flood_sleep_threshold = 24 * 60 * 60
 client.start()
-sent = {}
+me = client.get_me()
+if me:    
+    logger.info(msg=f'Logged in as {me.first_name}, {me.last_name} ({me.username})')
 
 while True:
     settings = db.settings.find_one({'_id': 'settings'})
-    active_profiles = [p['name'] for p in settings['profiles'] if p['enable']]
     sleeptimer = settings['sleeptimer']
     logger.debug_mode = settings.get('debug', False)
     count = 0
 
-    for profile_name in active_profiles:
-        profile_doc = db.profiles.find_one({'name': profile_name})
-        if not profile_doc:
-            logger.info(msg=f'Profile doc "{profile_name}" not found!', tg=True)
-            continue
-
+    for profile_doc in db.profiles.find({'enable': True}):
         profile = Profile(doc=profile_doc)
         logger.set_profile(profile)
         profile.process()
@@ -374,6 +397,6 @@ while True:
 
     actualsleep = sleeptimer - DELAY*count if sleeptimer - DELAY*count > 0 else 0
     logger.info(msg=f'Sleeping for {actualsleep} seconds...')
-    time.sleep(actualsleep)
+    sleep(actualsleep)
 
 

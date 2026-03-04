@@ -1,2 +1,2 @@
-DBNAME = 'tgcw'
+DBNAME = ''
 CONNSTRING = ''

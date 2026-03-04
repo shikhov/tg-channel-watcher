@@ -9,7 +9,7 @@ from pymongo import MongoClient
 from telethon.sync import TelegramClient, types
 
 from session import MyStringSession
-from config import CONNSTRING, DBNAME
+import config
 
 class Profile:
     def __init__(self, doc) -> None:
@@ -362,41 +362,43 @@ class Logger:
 
 DELAY = 10
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
-logging.getLogger('telethon').setLevel(logging.WARNING)
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
+    logging.getLogger('telethon').setLevel(logging.WARNING)
 
-db = MongoClient(CONNSTRING).get_database(DBNAME)
-settings = db.settings.find_one({'_id': 'settings'})
-API_ID = settings['api_id']
-API_HASH = settings['api_hash']
-SESSION = settings['session']
-logger = Logger(logchatid=settings.get('logchatid'))
-sent = {}
-
-if 'counters' not in db.list_collection_names():
-    db.create_collection('counters')
-
-client = TelegramClient(MyStringSession(SESSION), API_ID, API_HASH)
-client.flood_sleep_threshold = 24 * 60 * 60
-client.start()
-me = client.get_me()
-if me:    
-    logger.info(msg=f'Logged in as {me.first_name}, {me.last_name} ({me.username})')
-
-while True:
+    connstring = config.CONNSTRING or os.getenv('CONNSTRING')
+    dbname = config.DBNAME or os.getenv('DBNAME')
+    
+    db = MongoClient(connstring).get_database(dbname)
     settings = db.settings.find_one({'_id': 'settings'})
-    sleeptimer = settings['sleeptimer']
-    logger.debug_mode = settings.get('debug', False)
-    count = 0
+    API_ID = settings['api_id']
+    API_HASH = settings['api_hash']
+    SESSION = settings['session']
+    logger = Logger(logchatid=settings.get('logchatid'))
+    sent = {}
 
-    for profile_doc in db.profiles.find({'enable': True}):
-        profile = Profile(doc=profile_doc)
-        logger.set_profile(profile)
-        profile.process()
-        count += profile.count
+    if 'counters' not in db.list_collection_names():
+        db.create_collection('counters')
 
-    actualsleep = sleeptimer - DELAY*count if sleeptimer - DELAY*count > 0 else 0
-    logger.info(msg=f'Sleeping for {actualsleep} seconds...')
-    sleep(actualsleep)
+    client = TelegramClient(MyStringSession(SESSION), API_ID, API_HASH)
+    client.flood_sleep_threshold = 24 * 60 * 60
+    client.start()
+    me = client.get_me()
+    if me:    
+        logger.info(msg=f'Logged in as {me.first_name}, {me.last_name} ({me.username})')
 
+    while True:
+        settings = db.settings.find_one({'_id': 'settings'})
+        sleeptimer = settings['sleeptimer']
+        logger.debug_mode = settings.get('debug', False)
+        count = 0
 
+        for profile_doc in db.profiles.find({'enable': True}):
+            profile = Profile(doc=profile_doc)
+            logger.set_profile(profile)
+            profile.process()
+            count += profile.count
+
+        actualsleep = sleeptimer - DELAY*count if sleeptimer - DELAY*count > 0 else 0
+        logger.info(msg=f'Sleeping for {actualsleep} seconds...')
+        sleep(actualsleep)

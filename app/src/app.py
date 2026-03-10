@@ -366,8 +366,8 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
     logging.getLogger('telethon').setLevel(logging.WARNING)
 
-    connstring = config.CONNSTRING or os.getenv('CONNSTRING')
-    dbname = config.DBNAME or os.getenv('DBNAME')
+    connstring = os.getenv('CONNSTRING') or config.CONNSTRING
+    dbname = os.getenv('DBNAME') or config.DBNAME
     
     db = MongoClient(connstring).get_database(dbname)
     settings = db.settings.find_one({'_id': 'settings'})

@@ -9,6 +9,8 @@
 - Заполнить `config.py`:
   - `DBNAME` — имя БД
   - `CONNSTRING` — строка соединения с MongoDB
+  
+  *(также эти параметры можно передать через переменные среды)*
 - Получить api_id и api_hash для приложения на https://my.telegram.org
 - С помощью фреймворка Telethon произвести аутентификацию на сервере Telegram, сохранить string session. См.: https://docs.telethon.dev/en/stable/concepts/sessions.html#string-sessions
 - Создать БД с именем, указанным в `config.py`, в ней создать коллекции settings и profiles

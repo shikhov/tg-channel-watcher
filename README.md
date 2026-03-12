@@ -125,7 +125,7 @@
 - Развернуть Dockerfile
 
 ## Веб-интерфейс
-Для более удобного управления профилями можно использовать отдельный UI: https://github.com/shikhov/tgcw_ui
+UI для более удобного управления профилями: https://github.com/shikhov/tgcw_ui
 
 
 

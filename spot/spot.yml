@@ -16,4 +16,4 @@ tasks:
           docker build $APPNAME$TARGET -t $APPNAME$TARGET-image
           docker stop $APPNAME$TARGET || true
           docker rm $APPNAME$TARGET || true
-          docker run -d --name $APPNAME$TARGET --restart=on-failure $APPNAME$TARGET-image
+          docker run -d --name $APPNAME$TARGET --restart=always $APPNAME$TARGET-image

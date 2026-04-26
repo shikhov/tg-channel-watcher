@@ -14,10 +14,11 @@ import config
 
 class TMessage(types.Message):
     input_channel = None
+    watcher = None
 
     def trim(self, force_link):
         MAX_LENGTH = 4096
-        if self.media and not me.premium:
+        if self.media and not self.watcher.premium:
             MAX_LENGTH = 1024
 
         channel_id = str(self.chat_id).replace('-100', '')
@@ -31,11 +32,11 @@ class TMessage(types.Message):
 
         if force_link:
             if len(self.text) + len(link) > MAX_LENGTH:
-                logger.debug(msg=f'Message too long, trimming to {MAX_LENGTH} chars')
+                self.watcher.debug(msg=f'Message too long, trimming to {MAX_LENGTH} chars')
                 self.text = self.text[0:trim_length] + '…'
             self.text += link
         elif len(self.text) > MAX_LENGTH:
-            logger.debug(msg=f'Message too long, trimming to {MAX_LENGTH} chars')
+            self.watcher.debug(msg=f'Message too long, trimming to {MAX_LENGTH} chars')
             self.text = self.text[0:trim_length] + '…'
             self.text += link
 
@@ -43,12 +44,12 @@ class TMessage(types.Message):
         try:
             self.trim(force_link)
             if self.noforwards:
-                logger.debug(msg='Message has protected content, sending as copy')
+                self.watcher.debug(msg='Message has protected content, sending as copy')
                 self.send_protected_message(output_channel)
             else:
-                client.send_message(output_channel, self)
+                self.watcher.client.send_message(output_channel, self)
         except Exception as e:
-            logger.error(msg=f'Error sending message!\n{e}', tg=True, extended=True)
+            self.watcher.error(msg=f'Error sending message!\n{e}', tg=True, extended=True)
 
     def send_protected_message(self, output_channel):
         if self.media:            
@@ -69,8 +70,8 @@ class TMessage(types.Message):
                         if attr.voice:
                             voice_note = True
 
-            client.send_file(
-                self.output_channel, 
+            self.watcher.client.send_file(
+                output_channel,
                 path, 
                 caption=self.message,
                 attributes=attributes,
@@ -83,10 +84,11 @@ class TMessage(types.Message):
             if path and os.path.exists(path):
                 os.remove(path)
         else:
-            client.send_message(output_channel, self.message, formatting_entities=self.entities)
+            self.watcher.client.send_message(output_channel, self.message, formatting_entities=self.entities)
 
 class Item:
-    def __init__(self, messages: List[TMessage]) -> None:
+    def __init__(self, messages: List[TMessage], watcher) -> None:
+        self.watcher = watcher
         self.messages: List[TMessage] = messages
         self.msg: TMessage = messages[0]
         self.msg_id: int = messages[0].id
@@ -94,7 +96,7 @@ class Item:
         self.is_msg_from_chat: bool = bool(self.msg.from_id)
 
     def forward_to(self, output_channel):
-        client.forward_messages(output_channel, self.messages)
+        self.watcher.client.forward_messages(output_channel, self.messages)
 
     def send_to(self, output_channel, force_link=False):
         if self.count == 1:
@@ -103,7 +105,7 @@ class Item:
             self.send_album(output_channel, force_link=force_link)
 
     def send_album(self, output_channel, force_link=False):
-        logger.debug(msg=f'Sending album of {self.count} messages')
+        self.watcher.debug(msg=f'Sending album of {self.count} messages')
         paths = []
         messages = []
         formatting_entities = []
@@ -111,21 +113,21 @@ class Item:
 
         try:
             for msg in self.messages:
-                logger.debug(msg=f'Downloading media for msg id {msg.id}...')
+                self.watcher.debug(msg=f'Downloading media for msg id {msg.id}...')
                 path = msg.download_media()
                 paths.append(path)
                 messages.append(msg.message)
                 formatting_entities.append(msg.entities or fake_entities)                
                 msg.trim(force_link=force_link)
 
-            client.send_file(                
+            self.watcher.client.send_file(
                 output_channel,
                 paths,
                 caption=messages,
                 formatting_entities=formatting_entities
             )
         except Exception as e:
-            logger.error(msg=f'Error sending album!\n{e}', tg=True, extended=True)
+            self.watcher.error(msg=f'Error sending album!\n{e}', tg=True, extended=True)
         finally:
             for path in paths:
                 if path and os.path.exists(path):
@@ -140,7 +142,8 @@ class Item:
 
 
 class Profile:
-    def __init__(self, doc) -> None:
+    def __init__(self, doc, watcher) -> None:
+        self.watcher = watcher
         self.profile_id = doc['_id']
         self.name = doc['name']
         self.input_channels = doc['channels']
@@ -149,16 +152,16 @@ class Profile:
         self.init_counters()
 
     def init_counters(self):
-        counters_doc = db.counters.find_one({'profile_id': self.profile_id})
+        counters_doc = self.watcher.db.counters.find_one({'profile_id': self.profile_id})
         if not counters_doc:
-            result = db.counters.insert_one(
+            result = self.watcher.db.counters.insert_one(
                 {
                     'profile_id': self.profile_id,
                     'profile_name': self.name,
                     'counters': {str(channel): 0 for channel in self.input_channels},
                 }
             )
-            counters_doc = db.counters.find_one({'_id': result.inserted_id})
+            counters_doc = self.watcher.db.counters.find_one({'_id': result.inserted_id})
         else:
             counters_doc['counters'] = {str(c): counters_doc['counters'].get(str(c), 0) for c in self.input_channels}
             counters_doc['profile_name'] = self.name
@@ -169,48 +172,49 @@ class Profile:
     def run(self):
         for self.input_channel in self.input_channels:
             self.process_channel()
-            sleep(DELAY)            
+            sleep(self.watcher.DELAY)            
         self.update_counters()
 
     def process_channel(self):
         self.action = None
         self.count += 1
-        logger.info(msg=f'[{self.name}]{self.input_channel}')
+        self.watcher.info(msg=f'[{self.name}]{self.input_channel}')
         try:
-            last_msg_id = client.get_messages(self.input_channel, limit=1)[0].id
+            last_msg_id = self.watcher.client.get_messages(self.input_channel, limit=1)[0].id
         except Exception as e:
-            logger.warning(msg=f'Error receiving messages!\n{e}', tg=True, extended=True)
+            self.watcher.warning(msg=f'Error receiving messages!\n{e}', tg=True, extended=True)
             return
         saved_msg_id = self.counters[str(self.input_channel)]
         self.counters[str(self.input_channel)] = last_msg_id
         if last_msg_id <= saved_msg_id:
-            logger.debug(msg='No new messages')
+            self.watcher.debug(msg='No new messages')
             return
         if saved_msg_id == 0:
-            logger.debug(msg=f'Init last_msg_id to {last_msg_id}')
+            self.watcher.debug(msg=f'Init last_msg_id to {last_msg_id}')
             return
         items = self.get_messages(saved_msg_id, last_msg_id)
         if not items:
             return
-        logger.debug(msg=f'Got {len(items)} new messages/albums')
+        self.watcher.debug(msg=f'Got {len(items)} new messages/albums')
         for output in self.output:
-            self.action = Action(output, items)
+            self.action = Action(output, items, watcher=self.watcher)
             self.action.run()
 
     def update_counters(self):
         self.counters_doc['counters'] = self.counters
         self.counters_doc['lastupdate'] = int(time())
-        db.counters.update_one({'_id': self.counters_doc['_id']}, {'$set': self.counters_doc})
+        self.watcher.db.counters.update_one({'_id': self.counters_doc['_id']}, {'$set': self.counters_doc})
 
     def get_messages(self, saved_msg_id, last_msg_id) -> List[Item]:
         albums = {}
         non_album = []
 
-        for msg in reversed(client.get_messages(self.input_channel, limit=last_msg_id-saved_msg_id)):            
+        for msg in reversed(self.watcher.client.get_messages(self.input_channel, limit=last_msg_id-saved_msg_id)):
             if msg.id <= saved_msg_id:
                 continue
             msg.__class__ = TMessage
             msg.input_channel = self.input_channel
+            msg.watcher = self.watcher
             if msg.grouped_id:
                 if msg.grouped_id in albums:
                     albums[msg.grouped_id].append(msg)
@@ -225,11 +229,71 @@ class Profile:
         for msg in non_album:
             msg_array[msg.id] = [msg]
 
-        return [Item(messages=x[1]) for x in sorted(msg_array.items())]
+        return [Item(messages=x[1], watcher=self.watcher) for x in sorted(msg_array.items())]
+    
 
+class Watcher:
+    DELAY = 10
+
+    def __init__(self, connstring, dbname) -> None:
+        self.telethon_logger = logging.getLogger('telethon')
+        self.db = MongoClient(connstring).get_database(dbname)
+        settings = self.db.settings.find_one({'_id': 'settings'})
+        API_ID = settings['api_id']
+        API_HASH = settings['api_hash']
+        SESSION = settings['session']
+        self._init_logger(logchatid=settings.get('logchatid'))
+        self.sent = {}
+
+        if 'counters' not in self.db.list_collection_names():
+            self.db.create_collection('counters')
+
+        self._init_client(SESSION, API_ID, API_HASH)
+
+    def _init_logger(self, logchatid):
+        self.logger = Logger(logchatid=logchatid, watcher=self)
+        self.info = self.logger.info
+        self.warning = self.logger.warning
+        self.error = self.logger.error
+        self.debug = self.logger.debug
+
+    def _init_client(self, SESSION, API_ID, API_HASH):
+        self.client = TelegramClient(MyStringSession(SESSION), API_ID, API_HASH)
+        self.client.flood_sleep_threshold = 24 * 60 * 60
+        self.client.start()
+        me = self.client.get_me()
+        if me:    
+            self.info(msg=f'Logged in as {me.first_name} {me.last_name} ({me.username}), premium: {me.premium}')
+        self.premium = me.premium
+
+    def start_polling(self):
+        while True:
+            self.reread_settings()
+            self.run_profiles()
+            self.sleep()
+    
+    def reread_settings(self):
+        settings = self.db.settings.find_one({'_id': 'settings'})
+        self.sleeptimer = settings['sleeptimer']
+        self.logger.debug_mode = settings.get('debug', False)
+        self.telethon_logger.setLevel(settings.get('telethon_loglevel', logging.WARNING))
+
+    def run_profiles(self):        
+        self.count = 0
+        for profile_doc in self.db.profiles.find({'enable': True}):
+            profile = Profile(doc=profile_doc, watcher=self)
+            self.logger.set_profile(profile)
+            profile.run()
+            self.count += profile.count
+
+    def sleep(self):
+        actualsleep = self.sleeptimer - self.DELAY*self.count if self.sleeptimer - self.DELAY*self.count > 0 else 0
+        self.info(msg=f'Sleeping for {actualsleep} seconds...')
+        sleep(actualsleep)
 
 class Action:
-    def __init__(self, output, items: List[Item]) -> None:
+    def __init__(self, output, items: List[Item], watcher) -> None:
+        self.watcher = watcher
         self.output_channel = output['output_channel']
         self.rules = output.get('rules')
         self.any_matching = output.get('any_matching')
@@ -243,7 +307,7 @@ class Action:
 
     def run(self):
         for self.item in self.items:
-            logger.debug(msg=f'Checking msg id {self.item.msg_id}...')
+            self.watcher.debug(msg=f'Checking msg id {self.item.msg_id}...')
             if self.has_to_be_forwarded(self.item):
                 self.forward(self.item)
 
@@ -255,14 +319,14 @@ class Action:
 
     def check_ex_rules(self, item):        
         if not self.ex_rules:
-            logger.debug(msg='No ex_rules, forwarding message')
+            self.watcher.debug(msg='No ex_rules, forwarding message')
             return True
         for ex_rule in self.ex_rules:
             if self.evaluate_rule(ex_rule, item.msg):
-                logger.debug(msg='Message matched ex_rule, skipping')
+                self.watcher.debug(msg='Message matched ex_rule, skipping')
                 return False
             
-        logger.debug(msg='Message did not match any ex_rule, forwarding')
+        self.watcher.debug(msg='Message did not match any ex_rule, forwarding')
         return True
 
     def check_rules(self, item):
@@ -284,7 +348,7 @@ class Action:
     def evaluate_rule(self, rule, msg):
         if 'regex' in rule:
             if not msg.message:
-                logger.debug(msg='No text, skipping regex rules')
+                self.watcher.debug(msg='No text, skipping regex rules')
                 return False
             rule_regex = rule['regex']
             rule_eval = rule.get('eval')
@@ -295,18 +359,18 @@ class Action:
                     try:
                         rule_result = eval(rule_eval)
                     except Exception:
-                        logger.error(msg='Error with eval: ' + rule_eval, tg=True, extended=True)
+                        self.watcher.error(msg='Error with eval: ' + rule_eval, tg=True, extended=True)
                         break
 
                     if rule_result:
-                        logger.debug(msg=f'{debug_info} - matched')
+                        self.watcher.debug(msg=f'{debug_info} - matched')
                         return True
             else:
                 if re.search(rule_regex, msg.message, re.IGNORECASE | re.DOTALL):
-                    logger.debug(msg=f'{debug_info} - matched')
+                    self.watcher.debug(msg=f'{debug_info} - matched')
                     return True
             
-            logger.debug(msg=f'{debug_info} - did not match')
+            self.watcher.debug(msg=f'{debug_info} - did not match')
             return False
         
         if 'eval' in rule and 'regex' not in rule:
@@ -314,17 +378,17 @@ class Action:
             try:
                 rule_result = eval(rule_eval)
             except Exception:
-                logger.error(msg='Error with eval: ' + rule_eval, tg=True, extended=True)
+                self.watcher.error(msg='Error with eval: ' + rule_eval, tg=True, extended=True)
                 return False
 
             if rule_result:
-                logger.debug(msg=f"eval '{rule_eval}' - matched")
+                self.watcher.debug(msg=f"eval '{rule_eval}' - matched")
                 return True
             else:
-                logger.debug(msg=f"eval '{rule_eval}' - did not match")
+                self.watcher.debug(msg=f"eval '{rule_eval}' - did not match")
                 return False
         
-        logger.warning(msg='No valid rules found')
+        self.watcher.warning(msg='No valid rules found')
         return False
 
     def forward(self, item: Item):
@@ -335,21 +399,21 @@ class Action:
                     exec(self.exec_code)
                 except Exception as e:
                     exec_result = 'Failed'
-                    logger.error(msg='Error with exec: ' + self.exec_code + '\n' + str(e), tg=True, extended=True)
+                    self.watcher.error(msg='Error with exec: ' + self.exec_code + '\n' + str(e), tg=True, extended=True)
 
                 item.send_to(self.output_channel, force_link=item.is_msg_from_chat)
-                logger.debug(msg=f'Message forwarded to {self.output_channel}, {exec_result=}')
+                self.watcher.debug(msg=f'Message forwarded to {self.output_channel}, {exec_result=}')
                 return
 
             if self.all_messages:
                 item.forward_to(self.output_channel)
-                logger.debug(msg=f'Message forwarded to {self.output_channel}, all_messages={self.all_messages}')
+                self.watcher.debug(msg=f'Message forwarded to {self.output_channel}, all_messages={self.all_messages}')
                 return
             
             if self.filter_dupes and item.msg.message:
                 msg_hash = item.calc_msg_hash(self.output_channel)
-                if msg_hash in sent:
-                    logger.debug(msg='Message found in sent, skipping')
+                if msg_hash in self.watcher.sent:
+                    self.watcher.debug(msg='Message found in sent, skipping')
                     return
 
             if item.is_msg_from_chat:
@@ -363,22 +427,23 @@ class Action:
                     item.forward_to(self.output_channel)
 
             if self.filter_dupes and item.msg.message:
-                sent[msg_hash] = 1
+                self.watcher.sent[msg_hash] = 1
 
-            logger.debug(msg=f'Message forwarded to {self.output_channel}, hide_forward={self.hide_forward}')
+            self.watcher.debug(msg=f'Message forwarded to {self.output_channel}, hide_forward={self.hide_forward}')
 
         except TypeError as e:
-            logger.warning(msg=f'Error forwarding!\n{e}')
+            self.watcher.warning(msg=f'Error forwarding!\n{e}')
         except Exception as e:
-            logger.warning(msg=f'Error forwarding!\n{e}', tg=True, extended=True)
+            self.watcher.warning(msg=f'Error forwarding!\n{e}', tg=True, extended=True)
 
 
 class Logger:
     HASHTAG = '#tgcw'
     debug_mode = False
 
-    def __init__(self, logchatid) -> None:
+    def __init__(self, logchatid, watcher) -> None:
         self.logchatid = logchatid
+        self.watcher = watcher
 
     def set_profile(self, profile: Profile):
         self.profile = profile
@@ -426,52 +491,16 @@ class Logger:
         msg = header + icon + msg + f'\n{self.HASHTAG}'
 
         try:
-            client.send_message(self.logchatid, msg, parse_mode='HTML')
+            self.watcher.client.send_message(self.logchatid, msg, parse_mode='HTML')
         except Exception as e:
             self.error(e)
 
 
-DELAY = 10
-
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
-    telethon_logger = logging.getLogger('telethon')
 
     connstring = os.getenv('CONNSTRING') or config.CONNSTRING
     dbname = os.getenv('DBNAME') or config.DBNAME
-    
-    db = MongoClient(connstring).get_database(dbname)
-    settings = db.settings.find_one({'_id': 'settings'})
-    API_ID = settings['api_id']
-    API_HASH = settings['api_hash']
-    SESSION = settings['session']
-    logger = Logger(logchatid=settings.get('logchatid'))
-    sent = {}
 
-    if 'counters' not in db.list_collection_names():
-        db.create_collection('counters')
-
-    client = TelegramClient(MyStringSession(SESSION), API_ID, API_HASH)
-    client.flood_sleep_threshold = 24 * 60 * 60
-    client.start()
-    global me
-    me = client.get_me()    
-    if me:    
-        logger.info(msg=f'Logged in as {me.first_name} {me.last_name} ({me.username}), premium: {me.premium}')
-
-    while True:
-        settings = db.settings.find_one({'_id': 'settings'})
-        sleeptimer = settings['sleeptimer']
-        logger.debug_mode = settings.get('debug', False)
-        telethon_logger.setLevel(settings.get('telethon_loglevel', logging.WARNING))
-        count = 0
-
-        for profile_doc in db.profiles.find({'enable': True}):
-            profile = Profile(doc=profile_doc)
-            logger.set_profile(profile)
-            profile.run()
-            count += profile.count
-
-        actualsleep = sleeptimer - DELAY*count if sleeptimer - DELAY*count > 0 else 0
-        logger.info(msg=f'Sleeping for {actualsleep} seconds...')
-        sleep(actualsleep)
+    watcher = Watcher(connstring, dbname)
+    watcher.start_polling()

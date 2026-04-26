@@ -8,9 +8,7 @@ import uuid
 from pathlib import Path
 
 import pytest
-from pymongo import MongoClient
 from telethon import types
-from telethon.sync import TelegramClient
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,8 +18,7 @@ TEST_ENV_PATH = ROOT / "tests" / "test.env"
 sys.path.insert(0, str(APP_SRC))
 
 import app  # noqa: E402
-from app import Logger, Profile  # noqa: E402
-from session import MyStringSession  # noqa: E402
+from app import Watcher  # noqa: E402
 
 
 PNG_BYTES = base64.b64decode(
@@ -59,14 +56,6 @@ def get_test_channel(env_name):
     return normalize_channel(value)
 
 
-def bind_app_globals(db, client, logger, me):
-    app.db = db
-    app.client = client
-    app.logger = logger
-    app.me = me
-    app.sent = {}
-
-
 def clear_channel(client, channel):
     messages = client.get_messages(channel, limit=100)
     if not messages:
@@ -82,6 +71,7 @@ def write_file(folder, name, content):
 
 
 def prepare_profiles(db, profiles):
+    db.profiles.insert_many([{**profile, "enable": True} for profile in profiles])
     for profile in profiles:
         db.counters.insert_one(
             {
@@ -92,15 +82,10 @@ def prepare_profiles(db, profiles):
         )
 
 
-def run_profiles_once(logger, profiles):
-    logger.debug_mode = True
-    logging.getLogger("telethon").setLevel(logging.WARNING)
-
-    for profile_doc in profiles:
-        profile = Profile(doc=profile_doc)
-        logger.set_profile(profile)
-        profile.run()
-
+def run_profiles_once(watcher):
+    watcher.logger.debug_mode = True
+    watcher.telethon_logger.setLevel(logging.WARNING)
+    watcher.run_profiles()
     time.sleep(3)
 
 
@@ -153,35 +138,24 @@ def runtime():
     CONNSTRING = os.getenv("CONNSTRING")
     DBNAME = os.getenv("DBNAME")
 
-    db = MongoClient(CONNSTRING).get_database(DBNAME)
-    settings = db.settings.find_one({"_id": "settings"})
     session_dir = tempfile.TemporaryDirectory()
     cwd = os.getcwd()
     try:
         os.chdir(session_dir.name)
-        client = TelegramClient(
-            MyStringSession(settings["session"]),
-            settings["api_id"],
-            settings["api_hash"],
-        )
+        watcher = Watcher(CONNSTRING, DBNAME)
     finally:
         os.chdir(cwd)
 
-    client.flood_sleep_threshold = 24 * 60 * 60
-    client.start()
-    logger = Logger(logchatid=settings.get("logchatid"))
-    me = client.get_me()
+    db = watcher.db
+    client = watcher.client
     input_channel = get_test_channel(env_name="TG_TEST_INPUT_CHANNEL")
     output_channel = get_test_channel(env_name="TG_TEST_OUTPUT_CHANNEL")
-    app.DELAY = 0
-    bind_app_globals(db, client, logger, me)
+    watcher.DELAY = 0
 
     runtime_data = {
+        "watcher": watcher,
         "db": db,
         "client": client,
-        "logger": logger,
-        "me": me,
-        "settings": settings,
         "input_channel": input_channel,
         "output_channel": output_channel,
         "session_dir": session_dir,
@@ -192,6 +166,7 @@ def runtime():
     try:
         # clear_channel(client, input_channel)
         # clear_channel(client, output_channel)
+        db.profiles.delete_many({})
         db.counters.delete_many({})
     finally:
         client.disconnect()
@@ -200,11 +175,11 @@ def runtime():
 
 @pytest.fixture()
 def clean_state(runtime):
-    bind_app_globals(runtime["db"], runtime["client"], runtime["logger"], runtime["me"])
     clear_channel(runtime["client"], runtime["input_channel"])
     clear_channel(runtime["client"], runtime["output_channel"])
+    runtime["db"].profiles.delete_many({})
     runtime["db"].counters.delete_many({})
-    app.sent = {}
+    runtime["watcher"].sent = {}
     return runtime
 
 
@@ -330,7 +305,7 @@ def test_rules(clean_state):
             force_document=True,
         )
 
-        run_profiles_once(runtime["logger"], profiles)
+        run_profiles_once(runtime["watcher"])
 
     messages = wait_for_marker_count(
         runtime["client"], runtime["output_channel"], marker, expected_count=5
@@ -410,7 +385,7 @@ def test_all_messages(clean_state):
         )
         send_sticker_or_skip(runtime["client"], runtime["input_channel"], sticker)
 
-        run_profiles_once(runtime["logger"], profiles)
+        run_profiles_once(runtime["watcher"])
 
     messages = wait_for_marker_count(
         runtime["client"], runtime["output_channel"], marker, expected_count=3
@@ -458,7 +433,7 @@ def test_long_message(clean_state):
     msg_id = long_msg[0].forward_to(runtime["input_channel"]).id
     channel_id = str(runtime["input_channel"]).replace('-100', '')
         
-    run_profiles_once(runtime["logger"], profiles)
+    run_profiles_once(runtime["watcher"])
 
     messages = recent_output_messages(runtime["client"], runtime["output_channel"], limit=10)
 

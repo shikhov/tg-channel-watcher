@@ -17,7 +17,6 @@ TEST_ENV_PATH = ROOT / "tests" / "test.env"
 
 sys.path.insert(0, str(APP_SRC))
 
-import app  # noqa: E402
 from app import Watcher  # noqa: E402
 
 

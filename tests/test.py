@@ -8,6 +8,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from dotenv import load_dotenv
 from telethon import types
 
 
@@ -31,12 +32,7 @@ WEBP_BYTES = base64.b64decode(
 def load_test_env():
     if not TEST_ENV_PATH.exists():
         return
-    for line in TEST_ENV_PATH.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip())
+    load_dotenv(TEST_ENV_PATH, override=False)
 
 
 def normalize_channel(value):

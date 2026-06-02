@@ -247,6 +247,9 @@ class Watcher:
 
         if 'counters' not in self.db.list_collection_names():
             self.db.create_collection('counters')
+        
+        if 'logs' not in self.db.list_collection_names():
+            self.db.create_collection('logs', capped=True, size=5 * 1024 * 1024, max=500)
 
         self._init_client(SESSION, API_ID, API_HASH)
 
@@ -473,6 +476,15 @@ class Logger:
         if level == ERROR:
             logging.error(msg)
             icon = '⛔️ '
+
+        try:
+            self.watcher.db.logs.insert_one({
+                'ts': int(time()),
+                'level': level,
+                'message': msg
+            })
+        except Exception as e:
+            logging.error(f'Error saving log to database: {e}')
 
         if not tg:
             return
